@@ -43,11 +43,8 @@ jobs:
 
       - name: Install Protoc
         run: |
-          PROTOC_ZIP=protoc-${PROTOC_VERSION}-linux-x86_64.zip
-          curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/$PROTOC_ZIP
-          sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
-          sudo unzip -o $PROTOC_ZIP -d /usr/local 'include/*'
-          rm -f $PROTOC_ZIP
+          sudo apt update
+          sudo apt install -y protobuf-compiler
           protoc --version
 
       - name: Install protoc-gen-elixir
