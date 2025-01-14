@@ -19,10 +19,11 @@ defmodule Sportradar.MixProject do
 
   defp deps do
     [
-      {:tesla, ">= 0.0.0", optional: true},
-      {:hackney, ">= 0.0.0", optional: true},
-      {:jason, ">= 1.0.0", optional: true},
-      {:ecto, ">= 3.0.0"}
+      {:tesla, "~> 1.0"},
+      {:hackney, "~> 1.0", optional: true},
+      {:jason, "~> 1.0", optional: true},
+      {:ecto, "~> 3.0"},
+      {:phoenix_pubsub, "~> 2.0", optional: true}
     ]
   end
 end

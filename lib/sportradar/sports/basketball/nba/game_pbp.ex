@@ -1,34 +1,43 @@
-defmodule Sportradar.Sports.NBA.GamePBP do
+defmodule Sportradar.Sports.Basketball.NBA.GamePBP do
   use Sportradar.Schema
 
-  @embedded_fields [:time_zones, :home, :away, :broadcasts, :season, :periods, :events, :deleted_events]
+  @embedded_fields [
+    :time_zones,
+    :home,
+    :away,
+    :broadcasts,
+    :season,
+    :periods,
+    :events,
+    :deleted_events
+  ]
 
   embedded_schema do
-    field :status, Ecto.Enum, values: [:CLOSED, :IN_PROGRESS]
-    field :coverage, :string
-    field :scheduled, :string
-    field :duration, :string
-    field :attendance, :integer
-    field :parent_id, :string
-    field :lead_changes, :integer
-    field :times_tied, :integer
-    field :clock, :string
-    field :quarter, :integer
-    field :track_on_court, :boolean
-    field :reference, :string
-    field :entry_mode, :string
-    field :sr_id, :string
-    field :clock_decimal, :string
-    field :venue, :string
+    field(:status, Ecto.Enum, values: [:CLOSED, :IN_PROGRESS])
+    field(:coverage, :string)
+    field(:scheduled, :string)
+    field(:duration, :string)
+    field(:attendance, :integer)
+    field(:parent_id, :string)
+    field(:lead_changes, :integer)
+    field(:times_tied, :integer)
+    field(:clock, :string)
+    field(:quarter, :integer)
+    field(:track_on_court, :boolean)
+    field(:reference, :string)
+    field(:entry_mode, :string)
+    field(:sr_id, :string)
+    field(:clock_decimal, :string)
+    field(:venue, :string)
 
-    embeds_one :time_zones, TimeZones
-    embeds_one :home, Team
-    embeds_one :away, Team
-    embeds_many :broadcasts, Broadcast
-    embeds_one :season, Season
-    embeds_many :periods, Period
-    embeds_many :events, Event
-    embeds_many :deleted_events, DeletedEvent
+    embeds_one(:time_zones, TimeZones)
+    embeds_one(:home, Team)
+    embeds_one(:away, Team)
+    embeds_many(:broadcasts, Broadcast)
+    embeds_one(:season, Season)
+    embeds_many(:periods, Period)
+    embeds_many(:events, Event)
+    embeds_many(:deleted_events, DeletedEvent)
   end
 
   def changeset(game_pbp, attrs) do
@@ -52,9 +61,9 @@ defmodule Sportradar.Sports.NBA.GamePBP.TimeZones do
   use Sportradar.Schema
 
   embedded_schema do
-    field :venue, :string
-    field :home, :string
-    field :away, :string
+    field(:venue, :string)
+    field(:home, :string)
+    field(:away, :string)
   end
 
   def changeset(time_zones, attrs) do
@@ -72,17 +81,17 @@ defmodule Sportradar.Sports.NBA.GamePBP.Team do
   @embedded_fields [:record]
 
   embedded_schema do
-    field :name, :string
-    field :alias, :string
-    field :market, :string
-    field :id, :string
-    field :points, :integer
-    field :bonus, :boolean
-    field :sr_id, :string
-    field :remaining_timeouts, :integer
-    field :reference, :string
+    field(:name, :string)
+    field(:alias, :string)
+    field(:market, :string)
+    field(:id, :string)
+    field(:points, :integer)
+    field(:bonus, :boolean)
+    field(:sr_id, :string)
+    field(:remaining_timeouts, :integer)
+    field(:reference, :string)
 
-    embeds_one :record, Record
+    embeds_one(:record, Record)
   end
 
   def changeset(team, attrs) do
@@ -99,10 +108,10 @@ defmodule Sportradar.Sports.NBA.GamePBP.Broadcast do
   use Sportradar.Schema
 
   embedded_schema do
-    field :network, :string
-    field :type, Ecto.Enum, values: [:TV, :RADIO, :DIGITAL]
-    field :locale, :string
-    field :channel, :string
+    field(:network, :string)
+    field(:type, Ecto.Enum, values: [:TV, :RADIO, :DIGITAL])
+    field(:locale, :string)
+    field(:channel, :string)
   end
 
   def changeset(broadcast, attrs) do
@@ -118,10 +127,10 @@ defmodule Sportradar.Sports.NBA.GamePBP.Season do
   use Sportradar.Schema
 
   embedded_schema do
-    field :id, :string
-    field :year, :integer
-    field :type, Ecto.Enum, values: [:REGULAR_SEASON, :PLAYOFFS, :PRESEASON]
-    field :name, :string
+    field(:id, :string)
+    field(:year, :integer)
+    field(:type, Ecto.Enum, values: [:REGULAR_SEASON, :PLAYOFFS, :PRESEASON])
+    field(:name, :string)
   end
 
   def changeset(season, attrs) do
@@ -139,12 +148,12 @@ defmodule Sportradar.Sports.NBA.GamePBP.Period do
   @embedded_fields [:scoring]
 
   embedded_schema do
-    field :type, Ecto.Enum, values: [:QUARTER, :OVERTIME]
-    field :id, :string
-    field :number, :integer
-    field :sequence, :integer
+    field(:type, Ecto.Enum, values: [:QUARTER, :OVERTIME])
+    field(:id, :string)
+    field(:number, :integer)
+    field(:sequence, :integer)
 
-    embeds_one :scoring, Scoring
+    embeds_one(:scoring, Scoring)
   end
 
   def changeset(period, attrs) do
@@ -163,21 +172,21 @@ defmodule Sportradar.Sports.NBA.GamePBP.Event do
   @embedded_fields [:attribution, :on_court]
 
   embedded_schema do
-    field :id, :string
-    field :clock, :string
-    field :created, :string
-    field :updated, :string
-    field :description, :string
-    field :wall_clock, :string
-    field :sequence, :integer
-    field :home_points, :integer
-    field :away_points, :integer
-    field :clock_decimal, :string
-    field :number, :integer
-    field :event_type, Ecto.Enum, values: [:SHOT, :FOUL, :REBOUND]
+    field(:id, :string)
+    field(:clock, :string)
+    field(:created, :string)
+    field(:updated, :string)
+    field(:description, :string)
+    field(:wall_clock, :string)
+    field(:sequence, :integer)
+    field(:home_points, :integer)
+    field(:away_points, :integer)
+    field(:clock_decimal, :string)
+    field(:number, :integer)
+    field(:event_type, Ecto.Enum, values: [:SHOT, :FOUL, :REBOUND])
 
-    embeds_one :attribution, TeamOrPlayer
-    embeds_one :on_court, OnCourt
+    embeds_one(:attribution, TeamOrPlayer)
+    embeds_one(:on_court, OnCourt)
   end
 
   def changeset(event, attrs) do
@@ -195,7 +204,7 @@ defmodule Sportradar.Sports.NBA.GamePBP.DeletedEvent do
   use Sportradar.Schema
 
   embedded_schema do
-    field :id, :string
+    field(:id, :string)
   end
 
   def changeset(deleted_event, attrs) do
@@ -211,11 +220,11 @@ defmodule Sportradar.Sports.NBA.GamePBP.TeamScore do
   use Sportradar.Schema
 
   embedded_schema do
-    field :name, :string
-    field :market, :string
-    field :id, :string
-    field :points, :integer
-    field :reference, :string
+    field(:name, :string)
+    field(:market, :string)
+    field(:id, :string)
+    field(:points, :integer)
+    field(:reference, :string)
   end
 
   def changeset(team_score, attrs) do
@@ -231,11 +240,11 @@ defmodule Sportradar.Sports.NBA.GamePBP.TeamOrPlayer do
   use Sportradar.Schema
 
   embedded_schema do
-    field :name, :string
-    field :market, :string
-    field :id, :string
-    field :sr_id, :string
-    field :reference, :string
+    field(:name, :string)
+    field(:market, :string)
+    field(:id, :string)
+    field(:sr_id, :string)
+    field(:reference, :string)
   end
 
   def changeset(team_or_player, attrs) do
@@ -253,8 +262,8 @@ defmodule Sportradar.Sports.NBA.GamePBP.OnCourt do
   @embedded_fields [:home, :away]
 
   embedded_schema do
-    embeds_one :home, TeamPlayers
-    embeds_one :away, TeamPlayers
+    embeds_one(:home, TeamPlayers)
+    embeds_one(:away, TeamPlayers)
   end
 
   def changeset(on_court, attrs) do
@@ -273,13 +282,13 @@ defmodule Sportradar.Sports.NBA.GamePBP.TeamPlayers do
   @embedded_fields [:players]
 
   embedded_schema do
-    field :name, :string
-    field :market, :string
-    field :id, :string
-    field :sr_id, :string
-    field :reference, :string
+    field(:name, :string)
+    field(:market, :string)
+    field(:id, :string)
+    field(:sr_id, :string)
+    field(:reference, :string)
 
-    embeds_many :players, Player
+    embeds_many(:players, Player)
   end
 
   def changeset(team_players, attrs) do
@@ -296,8 +305,8 @@ defmodule Sportradar.Sports.NBA.GamePBP.Record do
   use Sportradar.Schema
 
   embedded_schema do
-    field :wins, :integer
-    field :losses, :integer
+    field(:wins, :integer)
+    field(:losses, :integer)
   end
 
   def changeset(record, attrs) do
@@ -313,11 +322,11 @@ defmodule Sportradar.Sports.NBA.GamePBP.Player do
   use Sportradar.Schema
 
   embedded_schema do
-    field :full_name, :string
-    field :jersey_number, :string
-    field :id, :string
-    field :sr_id, :string
-    field :reference, :string
+    field(:full_name, :string)
+    field(:jersey_number, :string)
+    field(:id, :string)
+    field(:sr_id, :string)
+    field(:reference, :string)
   end
 
   def changeset(player, attrs) do
@@ -335,10 +344,10 @@ defmodule Sportradar.Sports.NBA.GamePBP.Scoring do
   @embedded_fields [:home, :away]
 
   embedded_schema do
-    field :times_tied, :integer
-    field :lead_changes, :integer
-    embeds_one :home, TeamScore
-    embeds_one :away, TeamScore
+    field(:times_tied, :integer)
+    field(:lead_changes, :integer)
+    embeds_one(:home, TeamScore)
+    embeds_one(:away, TeamScore)
   end
 
   def changeset(scoring, attrs) do
