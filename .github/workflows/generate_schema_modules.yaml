@@ -29,6 +29,10 @@ jobs:
         with:
           node-version: '16'
 
+      - name: Install SWIPL
+        run: |
+             apt install swi-prolog
+             
       - name: Install xsd2json
         run: npm install -g xsd2json
 
