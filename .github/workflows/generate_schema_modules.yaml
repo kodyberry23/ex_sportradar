@@ -102,67 +102,75 @@ jobs:
                 echo "$league $version"
               }
               
+              process_xsd_file() {
+                local xsd_file="$1"
+                local output_dir="$2"
+                local package_base="$3"
+                local java_package_base="$4"
+                
+                # Extract version from filename (e.g., v2.0, v4.0, v8.0)
+                local file_version=$(basename "$xsd_file" | grep -o 'v[0-9]\+\.[0-9]\+' || echo "")
+                if [ -n "$file_version" ]; then
+                  # Create version-specific subdirectory
+                  local version_dir="$output_dir/$file_version"
+                  mkdir -p "$version_dir"
+                  
+                  echo "Processing file: $xsd_file (version: $file_version)"
+                  java -jar tools/schema2proto.jar \
+                    --outputDirectory="$version_dir" \
+                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
+                    --defaultProtoPackage="$package_base.$file_version" \
+                    --options="java_package:$java_package_base.$file_version" \
+                    --includeMessageDocs=true \
+                    --includeFieldDocs=true \
+                    --inheritanceToComposition=true \
+                    --skipEmptyTypeInheritance=true \
+                    --customImportLocations="$(dirname "$xsd_file")" \
+                    --derivationBySubsumption=true \
+                    "$xsd_file"
+                else
+                  echo "Warning: No version found in filename: $xsd_file"
+                fi
+              }
+              
               process_xsd_directory() {
                 local base_dir="$1"
-                local proto_dir="$2"
+                local proto_base_dir="$2"
                 local sport="$3"
                 local league="$4"
-                local version="$5"
-                local relative_path="${6:-}"  # Optional parameter for subdirectories
+                local main_version="$5"
+                local relative_path="${6:-}"
                 
                 local current_dir="${base_dir}${relative_path:+/$relative_path}"
-                local package_suffix="${relative_path:+.${relative_path,,}}"  # Convert to lowercase if exists
+                local package_suffix="${relative_path:+.${relative_path,,}}"
                 
                 echo "Processing directory: $current_dir"
                 
-                # First process common files in current directory
+                # Create proto output directory for this path
+                local proto_dir="$proto_base_dir${relative_path:+/$relative_path}"
+                mkdir -p "$proto_dir"
+                
+                # First process common files
                 find "$current_dir" -maxdepth 1 -name "common*.xsd" -type f | sort | while read -r xsd_file; do
-                  echo "Processing common file: $xsd_file"
-                  
-                  # Create a subdirectory in proto_dir if we're in a nested directory
-                  local output_subdir="$proto_dir${relative_path:+/$relative_path}"
-                  mkdir -p "$output_subdir"
-                  
-                  java -jar tools/schema2proto.jar \
-                    --outputDirectory="$output_subdir" \
-                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-                    --defaultProtoPackage="sportradar.sports.$sport.$league.common${package_suffix}" \
-                    --options="java_package:com.sportradar.sports.$sport.$league.common${package_suffix}" \
-                    --includeMessageDocs=true \
-                    --includeFieldDocs=true \
-                    --inheritanceToComposition=true \
-                    --skipEmptyTypeInheritance=true \
-                    --customImportLocations="$current_dir,$base_dir" \
-                    --derivationBySubsumption=true \
-                    "$xsd_file"
+                  process_xsd_file "$xsd_file" \
+                    "$proto_dir" \
+                    "sportradar.sports.$sport.$league.common${package_suffix}" \
+                    "com.sportradar.sports.$sport.$league.common${package_suffix}"
                 done
                 
-                # Then process non-common files in current directory
+                # Then process non-common files
                 find "$current_dir" -maxdepth 1 -name "*.xsd" ! -name "common*.xsd" -type f | sort | while read -r xsd_file; do
-                  echo "Processing file: $xsd_file"
-                  
-                  local output_subdir="$proto_dir${relative_path:+/$relative_path}"
-                  mkdir -p "$output_subdir"
-                  
-                  java -jar tools/schema2proto.jar \
-                    --outputDirectory="$output_subdir" \
-                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version${package_suffix}" \
-                    --options="java_package:com.sportradar.sports.$sport.$league.$version${package_suffix}" \
-                    --includeMessageDocs=true \
-                    --includeFieldDocs=true \
-                    --inheritanceToComposition=true \
-                    --skipEmptyTypeInheritance=true \
-                    --customImportLocations="$current_dir,$base_dir" \
-                    --derivationBySubsumption=true \
-                    "$xsd_file"
+                  process_xsd_file "$xsd_file" \
+                    "$proto_dir" \
+                    "sportradar.sports.$sport.$league.$main_version${package_suffix}" \
+                    "com.sportradar.sports.$sport.$league.$main_version${package_suffix}"
                 done
                 
                 # Process subdirectories
                 find "$current_dir" -mindepth 1 -maxdepth 1 -type d ! -name ".*" | while read -r subdir; do
                   local subdir_name=$(basename "$subdir")
                   local new_relative_path="${relative_path:+$relative_path/}$subdir_name"
-                  process_xsd_directory "$base_dir" "$proto_dir" "$sport" "$league" "$version" "$new_relative_path"
+                  process_xsd_directory "$base_dir" "$proto_base_dir" "$sport" "$league" "$main_version" "$new_relative_path"
                 done
               }
               
@@ -194,18 +202,20 @@ jobs:
                 
                 # Generate Elixir code from all proto files
                 echo "Generating Elixir code..."
-                find "$proto_dir" -name "*.proto" -type f | sort | while read -r proto_file; do
-                  echo "Generating Elixir code for $proto_file"
+                find "$proto_dir" -name "*.proto" -type f | while read -r proto_file; do
+                  # Extract version directory from proto file path
+                  local proto_rel_path=${proto_file#$proto_dir/}
+                  local version_part=$(echo "$proto_rel_path" | grep -o 'v[0-9]\+\.[0-9]\+' || echo "$version")
+                  local remaining_path=$(dirname "$proto_rel_path" | sed "s|$version_part||")
                   
-                  # Determine the relative path from proto_dir
-                  local rel_path=${proto_file#$proto_dir/}
-                  local rel_dir=$(dirname "$rel_path")
+                  echo "Generating Elixir code for $proto_file (version: $version_part)"
                   
-                  # Create corresponding directory in lib
-                  mkdir -p "lib/sportradar/sports/$sport/$league/$version/${rel_dir}"
+                  # Create the appropriate output directory
+                  mkdir -p "lib/sportradar/sports/$sport/$league/$version_part${remaining_path}"
                   
                   protoc \
-                    --elixir_out="lib/sportradar/sports/$sport/$league/$version/${rel_dir}" \
+                    --elixir_out="lib/sportradar/sports/$sport/$league/$version_part${remaining_path}" \
+                    --proto_path="$(dirname "$proto_file")" \
                     --proto_path="$proto_dir" \
                     "$proto_file"
                 done
