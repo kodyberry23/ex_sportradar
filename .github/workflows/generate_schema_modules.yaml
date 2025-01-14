@@ -23,65 +23,118 @@ jobs:
   sync_protos:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25.0'
+          elixir-version: '1.14.0'
+
+      - name: Install Protoc
+        run: |
+          PROTOC_ZIP=protoc-${PROTOC_VERSION}-linux-x86_64.zip
+          curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/$PROTOC_ZIP
+          sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
+          sudo unzip -o $PROTOC_ZIP -d /usr/local 'include/*'
+          rm -f $PROTOC_ZIP
+          protoc --version
+
+      - name: Install protoc-gen-elixir
+        run: |
+          mix escript.install hex protobuf ${PROTOC_GEN_ELIXIR_VERSION} --force
+          echo "$HOME/.mix/escripts" >> $GITHUB_PATH
+
+      - name: Download and setup schema2proto
+        run: |
+          mkdir -p tools
+          
+          SCHEMA2PROTO_URL="https://github.com/entur/schema2proto/releases/download/v${SCHEMA2PROTO_VERSION}/schema2proto.jar"
+          echo "Downloading schema2proto from: $SCHEMA2PROTO_URL"
+          
+          for i in {1..3}; do
+            if curl -L --fail "$SCHEMA2PROTO_URL" -o tools/schema2proto.jar; then
+              echo "Download successful"
+              break
+            else
+              echo "Attempt $i failed. Retrying after 5 seconds..."
+              sleep 5
+            fi
+          done
+          
+          if [ ! -f tools/schema2proto.jar ]; then
+            echo "Error: schema2proto.jar was not downloaded"
+            exit 1
+          fi
+          
+          if [ ! -s tools/schema2proto.jar ]; then
+            echo "Error: schema2proto.jar is empty"
+            exit 1
+          fi
+          
+          echo "schema2proto.jar successfully downloaded and verified"
+          ls -l tools/schema2proto.jar
+
       - name: Process Sportradar Endpoints
         run: |
-             # Create working directories
-             mkdir -p temp/{xsd,proto,elixir}
-             
-             # Function to extract league and version from URL
-             extract_league_version() {
-               local url="$1"
-               # Extract league (e.g., NFL, NBA, MLB)
-               local league=$(echo "$url" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
-               # Extract version (e.g., v7, v8)
-               local version=$(echo "$url" | grep -o 'v[0-9]\+' | tr '[:upper:]' '[:lower:]')
-               echo "$league $version"
-             }
-             
-             # Parse endpoints from input JSON and process each sport
-             echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
-               # Extract league and version from the endpoint URL
-               read -r league version <<< $(extract_league_version "$endpoint")
-               
-               echo "Processing $sport/$league $version from $endpoint"
-               
-               # Create sport-specific directories
-               mkdir -p temp/xsd/$sport/$league temp/proto/$sport/$league temp/elixir/$sport/$league
-               
-               # Download and unzip the schema
-               ZIP_FILE="temp/$sport-$league-schema.zip"
-               curl -L "$endpoint" -o "$ZIP_FILE"
-               unzip -o "$ZIP_FILE" -d "temp/xsd/$sport/$league"
-               rm "$ZIP_FILE"
-               
-               # Convert XSD to Proto
-               find "temp/xsd/$sport/$league" -name "*.xsd" -type f | while read -r xsd_file; do
-                 # Generate a filename-safe output path
-                 PROTO_FILE="temp/proto/$sport/$league/$(basename "$xsd_file" .xsd).proto"
-                 
-                 echo "Converting $xsd_file to $PROTO_FILE"
-                 
-                 java -jar tools/schema2proto.jar \
-                   --input="$xsd_file" \
-                   --output="$PROTO_FILE" \
-                   --package="sportradar.sports.$sport.$league.$version" \
-                   --java_package="com.sportradar.sports.$sport.$league.$version" \
-                   --proto_path="temp/proto/$sport/$league"
-                 
-                 # Generate Elixir code if proto file was created successfully
-                 if [ -f "$PROTO_FILE" ]; then
-                   echo "Generating Elixir code for $PROTO_FILE"
-                   
-                   # Create output directory structure
-                   mkdir -p "lib/sportradar/sports/$sport/$league/$version"
-                   
-                   protoc \
-                     --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
-                     --proto_path="temp/proto/$sport/$league" \
-                     "$PROTO_FILE"
-                 fi
-               done
-             done
+          mkdir -p temp/{xsd,proto,elixir}
+          
+          extract_league_version() {
+            local url="$1"
+            # Extract league (e.g., NFL, NBA, MLB)
+            local league=$(echo "$url" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
+            # Extract version (e.g., v7, v8)
+            local version=$(echo "$url" | grep -o 'v[0-9]\+' | tr '[:upper:]' '[:lower:]')
+            echo "$league $version"
+          }
+          
+          echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
+            # Extract league and version from the endpoint URL
+            read -r league version <<< $(extract_league_version "$endpoint")
+            
+            echo "Processing $sport/$league $version from $endpoint"
+            
+            mkdir -p temp/xsd/$sport/$league temp/proto/$sport/$league temp/elixir/$sport/$league
+            
+            ZIP_FILE="temp/$sport-$league-schema.zip"
+            curl -L "$endpoint" -o "$ZIP_FILE"
+            unzip -o "$ZIP_FILE" -d "temp/xsd/$sport/$league"
+            rm "$ZIP_FILE"
+            
+            find "temp/xsd/$sport/$league" -name "*.xsd" -type f | while read -r xsd_file; do
+              PROTO_FILE="temp/proto/$sport/$league/$(basename "$xsd_file" .xsd).proto"
+              
+              echo "Converting $xsd_file to $PROTO_FILE"
+              
+              java -jar tools/schema2proto.jar \
+                --input="$xsd_file" \
+                --output="$PROTO_FILE" \
+                --package="sportradar.sports.$sport.$league.$version" \
+                --java_package="com.sportradar.sports.$sport.$league.$version" \
+                --proto_path="temp/proto/$sport/$league"
+              
+              if [ -f "$PROTO_FILE" ]; then
+                echo "Generating Elixir code for $PROTO_FILE"
+                
+                mkdir -p "lib/sportradar/sports/$sport/$league/$version"
+                
+                protoc \
+                  --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
+                  --proto_path="temp/proto/$sport/$league" \
+                  "$PROTO_FILE"
+              fi
+            done
+          done
 
       - name: Clean up temporary files
         run: |
@@ -92,10 +145,8 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Stage all changes in the lib directory
           git add lib/sportradar
           
-          # Only commit and push if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
