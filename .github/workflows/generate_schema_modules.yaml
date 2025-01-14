@@ -35,7 +35,7 @@ jobs:
             sudo apt-get install -y swi-prolog
   
       - name: Install xsd2json
-        run: npm install -g xsd2json
+        run: npm install -g xsd2json@latest
 
       - name: Process Schemas
         run: |
@@ -66,7 +66,7 @@ jobs:
             find "temp/xsd/$sport/$league/$version" -name "*.xsd" -type f | while read -r xsd_file; do
               base_name=$(basename "$xsd_file" .xsd)
               output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
-                    
+
               xsd2json "$xsd_file" \
                 --output "$output_file" \
                 --pretty \
