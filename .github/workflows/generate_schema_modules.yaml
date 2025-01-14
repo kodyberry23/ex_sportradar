@@ -97,9 +97,7 @@ jobs:
               # Function to extract league and version from URL
               extract_league_version() {
                 local url="$1"
-                # Extract league (e.g., NFL, NBA, MLB)
                 local league=$(echo "$url" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
-                # Extract version (e.g., v7, v8)
                 local version=$(echo "$url" | grep -o 'v[0-9]\+' | tr '[:upper:]' '[:lower:]')
                 echo "$league $version"
               }
@@ -120,20 +118,34 @@ jobs:
                 unzip -o "$ZIP_FILE" -d "temp/xsd/$sport/$league"
                 rm "$ZIP_FILE"
     
-                # Remove MacOS system files if they exist
+                # Remove MacOS system files
                 find temp/xsd/$sport/$league -name "._*" -delete
                 find temp/xsd/$sport/$league -name ".DS_Store" -delete
                 find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
                 
-                # Convert XSD to Proto
-                find "temp/xsd/$sport/$league" -name "*.xsd" -type f | while read -r xsd_file; do
-                  echo "Converting $xsd_file to proto"
-                  
+                # First process common files
+                find "temp/xsd/$sport/$league" -name "common*.xsd" | while read -r xsd_file; do
                   output_dir="temp/proto/$sport/$league"
                   mkdir -p "$output_dir"
                   
-                  # Get the directory containing the current XSD file
-                  xsd_dir=$(dirname "$xsd_file")
+                  echo "Processing common file: $xsd_file"
+                  
+                  java -jar tools/schema2proto.jar \
+                    --outputDirectory="$output_dir" \
+                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
+                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version.common" \
+                    --options="java_package:com.sportradar.sports.$sport.$league.$version.common" \
+                    --includeMessageDocs=true \
+                    --includeFieldDocs=true \
+                    --customImportLocations="$(dirname "$xsd_file")" \
+                    "$xsd_file"
+                done
+                
+                # Then process other files
+                find "temp/xsd/$sport/$league" -not -name "common*.xsd" -name "*.xsd" | while read -r xsd_file; do
+                  output_dir="temp/proto/$sport/$league"
+                  
+                  echo "Processing file: $xsd_file"
                   
                   java -jar tools/schema2proto.jar \
                     --outputDirectory="$output_dir" \
@@ -142,22 +154,21 @@ jobs:
                     --options="java_package:com.sportradar.sports.$sport.$league.$version" \
                     --includeMessageDocs=true \
                     --includeFieldDocs=true \
-                    --customImportLocations="$xsd_dir" \
+                    --customImportLocations="$(dirname "$xsd_file")" \
+                    --customNameMappings="s:=common_" \
                     "$xsd_file"
+                done
+                
+                # Generate Elixir code from the proto files
+                find "temp/proto/$sport/$league" -name "*.proto" | while read -r proto_file; do
+                  echo "Generating Elixir code for $proto_file"
                   
-                  # Generate Elixir code if proto file was created successfully
-                  proto_file="$output_dir/$(basename "$xsd_file" .xsd).proto"
-                  if [ -f "$proto_file" ]; then
-                    echo "Generating Elixir code for $proto_file"
-                    
-                    # Create output directory structure
-                    mkdir -p "lib/sportradar/sports/$sport/$league/$version"
-                    
-                    protoc \
-                      --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
-                      --proto_path="$output_dir" \
-                      "$proto_file"
-                  fi
+                  mkdir -p "lib/sportradar/sports/$sport/$league/$version"
+                  
+                  protoc \
+                    --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
+                    --proto_path="$(dirname "$proto_file")" \
+                    "$proto_file"
                 done
               done
 
