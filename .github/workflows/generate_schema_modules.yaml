@@ -91,54 +91,75 @@ jobs:
 
       - name: Process Sportradar Endpoints
         run: |
-          mkdir -p temp/{xsd,proto,elixir}
-          
-          extract_league_version() {
-            local url="$1"
-            # Extract league (e.g., NFL, NBA, MLB)
-            local league=$(echo "$url" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
-            # Extract version (e.g., v7, v8)
-            local version=$(echo "$url" | grep -o 'v[0-9]\+' | tr '[:upper:]' '[:lower:]')
-            echo "$league $version"
-          }
-          
-          echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
-            # Extract league and version from the endpoint URL
-            read -r league version <<< $(extract_league_version "$endpoint")
-            
-            echo "Processing $sport/$league $version from $endpoint"
-            
-            mkdir -p temp/xsd/$sport/$league temp/proto/$sport/$league temp/elixir/$sport/$league
-            
-            ZIP_FILE="temp/$sport-$league-schema.zip"
-            curl -L "$endpoint" -o "$ZIP_FILE"
-            unzip -o "$ZIP_FILE" -d "temp/xsd/$sport/$league"
-            rm "$ZIP_FILE"
-            
-            find "temp/xsd/$sport/$league" -name "*.xsd" -type f | while read -r xsd_file; do
-              PROTO_FILE="temp/proto/$sport/$league/$(basename "$xsd_file" .xsd).proto"
+              # Create working directories
+              mkdir -p temp/{xsd,proto,elixir}
               
-              echo "Converting $xsd_file to $PROTO_FILE"
+              # Function to extract league and version from URL
+              extract_league_version() {
+                local url="$1"
+                # Extract league (e.g., NFL, NBA, MLB)
+                local league=$(echo "$url" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
+                # Extract version (e.g., v7, v8)
+                local version=$(echo "$url" | grep -o 'v[0-9]\+' | tr '[:upper:]' '[:lower:]')
+                echo "$league $version"
+              }
               
-            java -jar tools/schema2proto.jar \
-              --outputDirectory="temp/proto/$sport/$league" \
-              --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-              --defaultProtoPackage="sportradar.sports.$sport.$league.$version" \
-              --options="java_package:com.sportradar.sports.$sport.$league.$version" \
-              "$xsd_file"
-              
-              if [ -f "$PROTO_FILE" ]; then
-                echo "Generating Elixir code for $PROTO_FILE"
+              # Parse endpoints from input JSON and process each sport
+              echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
+                # Extract league and version from the endpoint URL
+                read -r league version <<< $(extract_league_version "$endpoint")
                 
-                mkdir -p "lib/sportradar/sports/$sport/$league/$version"
+                echo "Processing $sport/$league $version from $endpoint"
                 
-                protoc \
-                  --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
-                  --proto_path="temp/proto/$sport/$league" \
-                  "$PROTO_FILE"
-              fi
-            done
-          done
+                # Create sport-specific directories
+                mkdir -p temp/xsd/$sport/$league temp/proto/$sport/$league temp/elixir/$sport/$league
+                
+                # Download and unzip the schema
+                ZIP_FILE="temp/$sport-$league-schema.zip"
+                curl -L "$endpoint" -o "$ZIP_FILE"
+                unzip -o "$ZIP_FILE" -d "temp/xsd/$sport/$league"
+                rm "$ZIP_FILE"
+    
+                # Remove MacOS system files if they exist
+                find temp/xsd/$sport/$league -name "._*" -delete
+                find temp/xsd/$sport/$league -name ".DS_Store" -delete
+                find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
+                
+                # Convert XSD to Proto
+                find "temp/xsd/$sport/$league" -name "*.xsd" -type f | while read -r xsd_file; do
+                  echo "Converting $xsd_file to proto"
+                  
+                  output_dir="temp/proto/$sport/$league"
+                  mkdir -p "$output_dir"
+                  
+                  # Get the directory containing the current XSD file
+                  xsd_dir=$(dirname "$xsd_file")
+                  
+                  java -jar tools/schema2proto.jar \
+                    --outputDirectory="$output_dir" \
+                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
+                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version" \
+                    --options="java_package:com.sportradar.sports.$sport.$league.$version" \
+                    --includeMessageDocs=true \
+                    --includeFieldDocs=true \
+                    --customImportLocations="$xsd_dir" \
+                    "$xsd_file"
+                  
+                  # Generate Elixir code if proto file was created successfully
+                  proto_file="$output_dir/$(basename "$xsd_file" .xsd).proto"
+                  if [ -f "$proto_file" ]; then
+                    echo "Generating Elixir code for $proto_file"
+                    
+                    # Create output directory structure
+                    mkdir -p "lib/sportradar/sports/$sport/$league/$version"
+                    
+                    protoc \
+                      --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
+                      --proto_path="$output_dir" \
+                      "$proto_file"
+                  fi
+                done
+              done
 
       - name: Clean up temporary files
         run: |
