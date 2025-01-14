@@ -15,7 +15,7 @@ on:
                  }
 
 env:
-  SCHEMA2PROTO_VERSION: 1.1.0
+  SCHEMA2PROTO_VERSION: 1.97
   PROTOC_VERSION: 29.3
   PROTOC_GEN_ELIXIR_VERSION: 0.11.0
 
@@ -57,33 +57,37 @@ jobs:
 
       - name: Download and setup schema2proto
         run: |
-          mkdir -p tools
-          
-          SCHEMA2PROTO_URL="https://github.com/entur/schema2proto/releases/download/v${SCHEMA2PROTO_VERSION}/schema2proto.jar"
-          echo "Downloading schema2proto from: $SCHEMA2PROTO_URL"
-          
-          for i in {1..3}; do
-            if curl -L --fail "$SCHEMA2PROTO_URL" -o tools/schema2proto.jar; then
-              echo "Download successful"
-              break
-            else
-              echo "Attempt $i failed. Retrying after 5 seconds..."
-              sleep 5
+            # Create a directory to store our tools
+            mkdir -p tools
+            
+            # We're using Maven Central's repository to download the schema2proto library
+            # Maven Central is the primary repository for Java dependencies
+            MAVEN_URL="https://repo1.maven.org/maven2"
+            
+            # The full path to our specific version of schema2proto-lib
+            SCHEMA2PROTO_PATH="no/entur/schema2proto-lib/1.97/schema2proto-lib-1.97.jar"
+            
+            echo "Downloading schema2proto-lib version 1.97 from Maven Central"
+            
+            # Download with retry logic in case of temporary network issues
+            for i in {1..3}; do
+              if curl -L --fail "$MAVEN_URL/$SCHEMA2PROTO_PATH" -o "tools/schema2proto.jar"; then
+                echo "Download successful!"
+                break
+              else
+                echo "Attempt $i failed. Retrying after 5 seconds..."
+                sleep 5
+              fi
+            done
+            
+            # Verify our download was successful
+            if [ ! -f tools/schema2proto.jar ] || [ ! -s tools/schema2proto.jar ]; then
+              echo "Error: Failed to download schema2proto-lib"
+              exit 1
             fi
-          done
-          
-          if [ ! -f tools/schema2proto.jar ]; then
-            echo "Error: schema2proto.jar was not downloaded"
-            exit 1
-          fi
-          
-          if [ ! -s tools/schema2proto.jar ]; then
-            echo "Error: schema2proto.jar is empty"
-            exit 1
-          fi
-          
-          echo "schema2proto.jar successfully downloaded and verified"
-          ls -l tools/schema2proto.jar
+            
+            echo "schema2proto-lib has been downloaded and verified"
+            ls -l tools/schema2proto.jar
 
       - name: Process Sportradar Endpoints
         run: |
