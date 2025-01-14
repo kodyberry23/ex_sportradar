@@ -66,7 +66,7 @@ jobs:
             find "temp/xsd/$sport/$league/$version" -name "*.xsd" -type f | while read -r xsd_file; do
               base_name=$(basename "$xsd_file" .xsd)
               output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
-              
+                    
               xsd2json "$xsd_file" \
                 --output "$output_file" \
                 --pretty \
@@ -91,9 +91,9 @@ jobs:
             echo "No changes to commit"
           fi
 
-          - name: Set up Elixir
-          uses: erlef/setup-beam@v1
-          with:
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
             otp-version: '25.0'
             elixir-version: '1.14.0'
   
