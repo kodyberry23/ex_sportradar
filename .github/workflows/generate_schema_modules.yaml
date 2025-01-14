@@ -113,7 +113,7 @@ jobs:
                 local sport="$3"
                 local league="$4"
                 local version="$5"
-                local schema_files="$6"  # This is now a space-separated string
+                local schema_files="$6"
                 local namespace="$7"
                 
                 echo "Processing schema set for $namespace (version $version)"
@@ -122,30 +122,43 @@ jobs:
                 local work_dir="$proto_dir/work_${version}"
                 mkdir -p "$work_dir"
                 
-                # Convert space-separated string to array and copy files
-                echo "Copying schema files to work directory:"
+                # First, copy ALL XSD files of this version to ensure dependencies are available
+                echo "Copying all related schema files to work directory:"
+                find "$xsd_dir" -name "*${version}.xsd" -type f -exec cp {} "$work_dir/" \;
+                
+                # Then copy any specific files we're processing if they weren't copied already
                 for file in $schema_files; do
-                  echo "  Copying $file"
-                  if [ -f "$xsd_dir/$file" ]; then
+                  if [ ! -f "$work_dir/$file" ]; then
+                    echo "  Copying additional file: $file"
                     cp "$xsd_dir/$file" "$work_dir/"
-                  else
-                    echo "  Warning: File not found: $xsd_dir/$file"
-                    continue
                   fi
                 done
                 
-                # Find first schema file to process
-                local main_schema=$(ls "$work_dir"/*.xsd 2>/dev/null | head -n 1)
+                # List all files in work directory for debugging
+                echo "Files in work directory:"
+                ls -l "$work_dir"
+                
+                # Find the appropriate starting schema file
+                # Prefer common files first if they exist
+                local main_schema=""
+                for file in $schema_files; do
+                  if [[ "$file" == common* ]]; then
+                    main_schema="$work_dir/$file"
+                    break
+                  fi
+                done
+                
+                # If no common file was found, use the first schema file
                 if [ -z "$main_schema" ]; then
-                  echo "Error: No schema files found in work directory"
-                  return 1
+                  main_schema="$work_dir/$(echo $schema_files | awk '{print $1}')"
                 fi
+                
+                echo "Using main schema file: $(basename "$main_schema")"
                 
                 # Process with schema2proto
                 local output_dir="$proto_dir/$version"
                 mkdir -p "$output_dir"
                 
-                echo "Processing schema with main file: $(basename "$main_schema")"
                 java -jar tools/schema2proto.jar \
                   --outputDirectory="$output_dir" \
                   --defaultProtoPackage="$namespace" \
@@ -161,6 +174,7 @@ jobs:
                 local result=$?
                 if [ $result -ne 0 ]; then
                   echo "Error: schema2proto processing failed with exit code $result"
+                  # Don't delete work directory on error so we can inspect it
                   return $result
                 fi
                 
