@@ -83,9 +83,6 @@ jobs:
           # Clean up temporary files
           rm -rf temp
 
-      - name: Remove Temp Dir
-        run: 
-
       - name: Commit and push schema files
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
