@@ -1,4 +1,4 @@
-defmodule Sportradar.EventHandler do
+defmodule Sportradar.SubscriptionHandler do
   use GenServer
 
   alias Sportradar.Client

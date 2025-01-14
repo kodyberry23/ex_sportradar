@@ -1,4 +1,4 @@
-defmodule Sportradar.EventSupervisor do
+defmodule Sportradar.SubscriptionSupervisor do
   use Supervisor
 
   def start_link(init_arg) do
@@ -7,19 +7,11 @@ defmodule Sportradar.EventSupervisor do
 
   @impl true
   def init(_init_arg) do
-    base_children = [
+    children = [
+      {Phoenix.PubSub, name: Sportradar.PubSub},
       {Registry, name: Sportradar.MatchRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: Sportradar.DynamicSupervisor}
     ]
-
-    children =
-      case Code.ensure_loaded?(Phoenix.PubSub) do
-        true ->
-          [{Phoenix.PubSub, name: Sportradar.PubSub} | base_children]
-
-        false ->
-          base_children
-      end
 
     Supervisor.init(children, strategy: :one_for_one)
   end
