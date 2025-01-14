@@ -91,10 +91,7 @@ jobs:
 
       - name: Process Sportradar Endpoints
         run: |
-              # Create working directories
-              mkdir -p temp/{xsd,proto,elixir}
-              
-              # Function to extract league and version from URL
+              # Utility function to extract league and version from URL
               extract_league_version() {
                 local url="$1"
                 local league=$(echo "$url" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
@@ -102,121 +99,157 @@ jobs:
                 echo "$league $version"
               }
               
-              process_xsd_file() {
-                local xsd_file="$1"
-                local output_dir="$2"
-                local package_base="$3"
-                local java_package_base="$4"
-                
-                # Extract version from filename (e.g., v2.0, v4.0, v8.0)
-                local file_version=$(basename "$xsd_file" | grep -o 'v[0-9]\+\.[0-9]\+' || echo "")
-                if [ -n "$file_version" ]; then
-                  # Create version-specific subdirectory
-                  local version_dir="$output_dir/$file_version"
-                  mkdir -p "$version_dir"
-                  
-                  echo "Processing file: $xsd_file (version: $file_version)"
-                  java -jar tools/schema2proto.jar \
-                    --outputDirectory="$version_dir" \
-                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-                    --defaultProtoPackage="$package_base.$file_version" \
-                    --options="java_package:$java_package_base.$file_version" \
-                    --includeMessageDocs=true \
-                    --includeFieldDocs=true \
-                    --inheritanceToComposition=true \
-                    --skipEmptyTypeInheritance=true \
-                    --customImportLocations="$(dirname "$xsd_file")" \
-                    --derivationBySubsumption=true \
-                    "$xsd_file"
-                else
-                  echo "Warning: No version found in filename: $xsd_file"
-                fi
+              # Function to discover all schema versions in a directory
+              discover_versions() {
+                local xsd_dir="$1"
+                find "$xsd_dir" -type f -name "*.xsd" -exec basename {} \; | \
+                  grep -o 'v[0-9]\+\.[0-9]\+' | sort -u
               }
               
-              process_xsd_directory() {
-                local base_dir="$1"
-                local proto_base_dir="$2"
+              # Function to process a set of related schema files
+              process_schema_set() {
+                local xsd_dir="$1"
+                local proto_dir="$2"
                 local sport="$3"
                 local league="$4"
-                local main_version="$5"
-                local relative_path="${6:-}"
+                local version="$5"
+                local schema_files=("$6")
+                local namespace="$7"
                 
-                local current_dir="${base_dir}${relative_path:+/$relative_path}"
-                local package_suffix="${relative_path:+.${relative_path,,}}"
+                echo "Processing schema set for $namespace (version $version)"
                 
-                echo "Processing directory: $current_dir"
+                # Create work directory for handling dependencies
+                local work_dir="$proto_dir/work_${version}"
+                mkdir -p "$work_dir"
                 
-                # Create proto output directory for this path
-                local proto_dir="$proto_base_dir${relative_path:+/$relative_path}"
-                mkdir -p "$proto_dir"
-                
-                # First process common files
-                find "$current_dir" -maxdepth 1 -name "common*.xsd" -type f | sort | while read -r xsd_file; do
-                  process_xsd_file "$xsd_file" \
-                    "$proto_dir" \
-                    "sportradar.sports.$sport.$league.common${package_suffix}" \
-                    "com.sportradar.sports.$sport.$league.common${package_suffix}"
+                # Copy schemas to work directory
+                for file in "${schema_files[@]}"; do
+                  cp "$xsd_dir/$file" "$work_dir/"
+                  echo "  Included schema: $file"
                 done
                 
-                # Then process non-common files
-                find "$current_dir" -maxdepth 1 -name "*.xsd" ! -name "common*.xsd" -type f | sort | while read -r xsd_file; do
-                  process_xsd_file "$xsd_file" \
-                    "$proto_dir" \
-                    "sportradar.sports.$sport.$league.$main_version${package_suffix}" \
-                    "com.sportradar.sports.$sport.$league.$main_version${package_suffix}"
+                # Process with schema2proto
+                local output_dir="$proto_dir/$version"
+                mkdir -p "$output_dir"
+                
+                java -jar tools/schema2proto.jar \
+                  --outputDirectory="$output_dir" \
+                  --defaultProtoPackage="$namespace" \
+                  --options="java_package:com.$namespace" \
+                  --includeMessageDocs=true \
+                  --includeFieldDocs=true \
+                  --inheritanceToComposition=true \
+                  --skipEmptyTypeInheritance=true \
+                  --customImportLocations="$work_dir" \
+                  --derivationBySubsumption=true \
+                  "$work_dir/${schema_files[0]}"
+                
+                rm -rf "$work_dir"
+              }
+              
+              # Function to process all schemas for a sport
+              process_sport_schemas() {
+                local xsd_dir="$1"
+                local proto_dir="$2"
+                local sport="$3"
+                local league="$4"
+                
+                echo "Analyzing schema structure for $sport/$league..."
+                
+                # Process main directory schemas
+                local versions=($(discover_versions "$xsd_dir"))
+                echo "Found versions: ${versions[*]}"
+                
+                for version in "${versions[@]}"; do
+                  # Process common files first
+                  local common_files=($(find "$xsd_dir" -maxdepth 1 -name "common*${version}.xsd" -printf "%f\n"))
+                  if [ ${#common_files[@]} -gt 0 ]; then
+                    echo "Processing common files for version $version"
+                    process_schema_set \
+                      "$xsd_dir" \
+                      "$proto_dir" \
+                      "$sport" \
+                      "$league" \
+                      "$version" \
+                      "${common_files[*]}" \
+                      "sportradar.sports.$sport.$league.common.$version"
+                  fi
+                  
+                  # Then process non-common files
+                  local other_files=($(find "$xsd_dir" -maxdepth 1 -name "*${version}.xsd" ! -name "common*" -printf "%f\n"))
+                  if [ ${#other_files[@]} -gt 0 ]; then
+                    echo "Processing other files for version $version"
+                    process_schema_set \
+                      "$xsd_dir" \
+                      "$proto_dir" \
+                      "$sport" \
+                      "$league" \
+                      "$version" \
+                      "${other_files[*]}" \
+                      "sportradar.sports.$sport.$league.$version"
+                  fi
                 done
                 
                 # Process subdirectories
-                find "$current_dir" -mindepth 1 -maxdepth 1 -type d ! -name ".*" | while read -r subdir; do
+                find "$xsd_dir" -mindepth 1 -maxdepth 1 -type d ! -name ".*" | while read -r subdir; do
                   local subdir_name=$(basename "$subdir")
-                  local new_relative_path="${relative_path:+$relative_path/}$subdir_name"
-                  process_xsd_directory "$base_dir" "$proto_base_dir" "$sport" "$league" "$main_version" "$new_relative_path"
+                  echo "Processing subdirectory: $subdir_name"
+                  
+                  local subdir_versions=($(discover_versions "$subdir"))
+                  for subversion in "${subdir_versions[@]}"; do
+                    local sub_files=($(find "$subdir" -name "*${subversion}.xsd" -printf "%f\n"))
+                    if [ ${#sub_files[@]} -gt 0 ]; then
+                      echo "Processing $subdir_name files for version $subversion"
+                      process_schema_set \
+                        "$subdir" \
+                        "$proto_dir/${subdir_name,,}" \
+                        "$sport" \
+                        "$league" \
+                        "$subversion" \
+                        "${sub_files[*]}" \
+                        "sportradar.sports.$sport.$league.${subdir_name,,}.$subversion"
+                    fi
+                  done
                 done
               }
               
-              # Parse endpoints from input JSON and process each sport
+              # Main processing loop
               echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
-                # Extract league and version from the endpoint URL
                 read -r league version <<< $(extract_league_version "$endpoint")
                 
                 echo "Processing $sport/$league $version from $endpoint"
                 
-                # Create sport-specific directories
-                mkdir -p temp/xsd/$sport/$league temp/proto/$sport/$league temp/elixir/$sport/$league
+                # Create directories and download schema
+                mkdir -p temp/xsd/$sport/$league temp/proto/$sport/$league
                 
-                # Download and unzip the schema
-                ZIP_FILE="temp/$sport-$league-schema.zip"
-                curl -L "$endpoint" -o "$ZIP_FILE"
-                unzip -o "$ZIP_FILE" -d "temp/xsd/$sport/$league"
-                rm "$ZIP_FILE"
-    
-                # Remove MacOS system files
+                # Download and extract schema
+                curl -L "$endpoint" -o "temp/$sport-$league-schema.zip"
+                unzip -o "temp/$sport-$league-schema.zip" -d "temp/xsd/$sport/$league"
+                rm "temp/$sport-$league-schema.zip"
+                
+                # Clean up MacOS files
                 find temp/xsd/$sport/$league -name "._*" -delete
                 find temp/xsd/$sport/$league -name ".DS_Store" -delete
                 find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
                 
-                # Process all XSD files recursively
-                xsd_dir="temp/xsd/$sport/$league"
-                proto_dir="temp/proto/$sport/$league"
-                process_xsd_directory "$xsd_dir" "$proto_dir" "$sport" "$league" "$version"
+                # Process all schemas
+                process_sport_schemas \
+                  "temp/xsd/$sport/$league" \
+                  "temp/proto/$sport/$league" \
+                  "$sport" \
+                  "$league"
                 
-                # Generate Elixir code from all proto files
+                # Generate Elixir code
                 echo "Generating Elixir code..."
-                find "$proto_dir" -name "*.proto" -type f | while read -r proto_file; do
-                  # Extract version directory from proto file path
-                  local proto_rel_path=${proto_file#$proto_dir/}
-                  local version_part=$(echo "$proto_rel_path" | grep -o 'v[0-9]\+\.[0-9]\+' || echo "$version")
-                  local remaining_path=$(dirname "$proto_rel_path" | sed "s|$version_part||")
+                find "temp/proto/$sport/$league" -name "*.proto" -type f | sort | while read -r proto_file; do
+                  relative_path=${proto_file#temp/proto/$sport/$league/}
+                  output_dir="lib/sportradar/sports/$sport/$league/$(dirname "$relative_path")"
                   
-                  echo "Generating Elixir code for $proto_file (version: $version_part)"
-                  
-                  # Create the appropriate output directory
-                  mkdir -p "lib/sportradar/sports/$sport/$league/$version_part${remaining_path}"
+                  mkdir -p "$output_dir"
                   
                   protoc \
-                    --elixir_out="lib/sportradar/sports/$sport/$league/$version_part${remaining_path}" \
+                    --elixir_out="$output_dir" \
                     --proto_path="$(dirname "$proto_file")" \
-                    --proto_path="$proto_dir" \
                     "$proto_file"
                 done
               done
