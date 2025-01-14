@@ -67,8 +67,7 @@ jobs:
               base_name=$(basename "$xsd_file" .xsd)
               output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
 
-              xsd2json "$xsd_file" \
-                --output "$output_file" \
+              xsd2json "$xsd_file" > "$output_file" \
                 --pretty \
                 --module-name "${base_name}"
             done
