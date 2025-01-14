@@ -118,44 +118,43 @@ jobs:
                 
                 echo "Processing schema set for $namespace (version $version)"
                 
-                # Create work directory for handling dependencies
+                # Create work directory
                 local work_dir="$proto_dir/work_${version}"
                 mkdir -p "$work_dir"
                 
-                # First, copy ALL XSD files of this version to ensure dependencies are available
-                echo "Copying all related schema files to work directory:"
+                # Copy all schema files
+                echo "Copying schema files to work directory:"
                 find "$xsd_dir" -name "*${version}.xsd" -type f -exec cp {} "$work_dir/" \;
                 
-                # Then copy any specific files we're processing if they weren't copied already
-                for file in $schema_files; do
-                  if [ ! -f "$work_dir/$file" ]; then
-                    echo "  Copying additional file: $file"
-                    cp "$xsd_dir/$file" "$work_dir/"
-                  fi
-                done
+                # Determine processing order based on dependencies
+                # 1. Base common file first (defines basic types)
+                # 2. Domain-specific common files next (like common-standings)
+                # 3. Other files last
+                local processing_order=""
                 
-                # List all files in work directory for debugging
-                echo "Files in work directory:"
-                ls -l "$work_dir"
-                
-                # Find the appropriate starting schema file
-                # Prefer common files first if they exist
-                local main_schema=""
-                for file in $schema_files; do
-                  if [[ "$file" == common* ]]; then
-                    main_schema="$work_dir/$file"
-                    break
-                  fi
-                done
-                
-                # If no common file was found, use the first schema file
-                if [ -z "$main_schema" ]; then
-                  main_schema="$work_dir/$(echo $schema_files | awk '{print $1}')"
+                # First, look for the base common file
+                if [ -f "$work_dir/common-${version}.xsd" ]; then
+                  processing_order="common-${version}.xsd"
                 fi
                 
-                echo "Using main schema file: $(basename "$main_schema")"
+                # Next, add domain-specific common files
+                for file in "$work_dir"/common-*-${version}.xsd; do
+                  if [ -f "$file" ] && [ "$(basename "$file")" != "common-${version}.xsd" ]; then
+                    processing_order="$processing_order $(basename "$file")"
+                  fi
+                done
                 
-                # Process with schema2proto
+                # Finally, add remaining files
+                for file in "$work_dir"/*${version}.xsd; do
+                  if [[ ! "$(basename "$file")" =~ ^common ]]; then
+                    processing_order="$processing_order $(basename "$file")"
+                  fi
+                done
+                
+                echo "Processing files in order:"
+                echo "$processing_order"
+                
+                # Process all files together with clear dependency order
                 local output_dir="$proto_dir/$version"
                 mkdir -p "$output_dir"
                 
@@ -169,12 +168,15 @@ jobs:
                   --skipEmptyTypeInheritance=true \
                   --customImportLocations="$work_dir" \
                   --derivationBySubsumption=true \
-                  "$main_schema"
+                  --failIfRemovedFields=false \
+                  --includeXsdOptions=true \
+                  $(for file in $processing_order; do echo "$work_dir/$file"; done)
                 
                 local result=$?
                 if [ $result -ne 0 ]; then
                   echo "Error: schema2proto processing failed with exit code $result"
-                  # Don't delete work directory on error so we can inspect it
+                  echo "Files in work directory during error:"
+                  ls -l "$work_dir"
                   return $result
                 fi
                 
