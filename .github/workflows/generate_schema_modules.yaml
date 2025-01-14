@@ -16,7 +16,7 @@ on:
 
 env:
   SCHEMA2PROTO_VERSION: 1.1.0
-  PROTOC_VERSION: 3.21.1
+  PROTOC_VERSION: 29.3
   PROTOC_GEN_ELIXIR_VERSION: 0.11.0
 
 jobs:
@@ -43,8 +43,11 @@ jobs:
 
       - name: Install Protoc
         run: |
-          sudo apt update
-          sudo apt install -y protobuf-compiler
+          PROTOC_ZIP=protoc-${PROTOC_VERSION}-linux-x86_64.zip
+          curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/$PROTOC_ZIP
+          sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
+          sudo unzip -o $PROTOC_ZIP -d /usr/local 'include/*'
+          rm -f $PROTOC_ZIP
           protoc --version
 
       - name: Install protoc-gen-elixir
