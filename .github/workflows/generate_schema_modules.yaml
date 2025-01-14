@@ -29,12 +29,19 @@ jobs:
         with:
           node-version: '16'
 
-      - name: Install SWIPL
-        run: |
-             apt install swi-prolog
-             
       - name: Install xsd2json
-        run: npm install -g xsd2json
+        run: |
+             mkdir temp
+
+             cd temp
+
+             git clone https://github.com/fnogatz/xsd2json.git
+
+             cd xsd2json
+
+             npm run preinstall
+
+             cd ../../
 
       - name: Process Schemas
         run: |
@@ -75,6 +82,9 @@ jobs:
           
           # Clean up temporary files
           rm -rf temp
+
+      - name: Remove Temp Dir
+        run: 
 
       - name: Commit and push schema files
         run: |
