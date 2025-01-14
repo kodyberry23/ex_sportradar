@@ -120,12 +120,12 @@ jobs:
               
               echo "Converting $xsd_file to $PROTO_FILE"
               
-              java -jar tools/schema2proto.jar \
-                --input="$xsd_file" \
-                --output="$PROTO_FILE" \
-                --package="sportradar.sports.$sport.$league.$version" \
-                --java_package="com.sportradar.sports.$sport.$league.$version" \
-                --proto_path="temp/proto/$sport/$league"
+            java -jar tools/schema2proto.jar \
+              --outputDirectory="temp/proto/$sport/$league" \
+              --outputFilename="$(basename "$xsd_file" .xsd).proto" \
+              --defaultProtoPackage="sportradar.sports.$sport.$league.$version" \
+              --options="java_package:com.sportradar.sports.$sport.$league.$version" \
+              "$xsd_file"
               
               if [ -f "$PROTO_FILE" ]; then
                 echo "Generating Elixir code for $PROTO_FILE"
