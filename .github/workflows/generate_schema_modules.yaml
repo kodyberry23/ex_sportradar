@@ -1,10 +1,10 @@
-name: Sportradar Proto Sync
+name: Sportradar Schema Sync
 
 on:
   workflow_dispatch:
     inputs:
       sports_endpoints:
-        description: 'JSON object mapping sports to their API endpoints (e.g., {"football": "https://api-docs.sportradar.us/NFL/NFL_v7.zip", "baseball": "https://api-docs.sportradar.us/mlb/MLB_v7_Schema.zip"})'
+        description: 'JSON object mapping sports to their API endpoints'
         required: true
         type: string
         default: |
@@ -14,13 +14,8 @@ on:
                    "baseball": "https://api-docs.sportradar.us/mlb/MLB_v7_Schema.zip"
                  }
 
-env:
-  SCHEMA2PROTO_VERSION: 1.97
-  PROTOC_VERSION: 29.3
-  PROTOC_GEN_ELIXIR_VERSION: 0.11.0
-
 jobs:
-  sync_protos:
+  convert_schemas:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -29,281 +24,102 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Java
-        uses: actions/setup-java@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          distribution: 'temurin'
-          java-version: '11'
+          node-version: '16'
 
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: '25.0'
-          elixir-version: '1.14.0'
+      - name: Install xsd2json
+        run: npm install -g xsd2json
 
-      - name: Install Protoc
+      - name: Process Schemas
         run: |
-          PROTOC_ZIP=protoc-${PROTOC_VERSION}-linux-x86_64.zip
-          curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/$PROTOC_ZIP
-          sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
-          sudo unzip -o $PROTOC_ZIP -d /usr/local 'include/*'
-          rm -f $PROTOC_ZIP
-          protoc --version
-
-      - name: Install protoc-gen-elixir
-        run: |
-          mix escript.install hex protobuf ${PROTOC_GEN_ELIXIR_VERSION} --force
-          echo "$HOME/.mix/escripts" >> $GITHUB_PATH
-
-      - name: Download and setup schema2proto
-        run: |
-            # Create a directory to store our tools
-            mkdir -p tools
+          # Create schemas directory in the repository
+          mkdir -p priv/schemas
+          
+          echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
+            # Extract league and version from URL
+            league=$(echo "$endpoint" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
+            version=$(echo "$endpoint" | grep -o 'v[0-9]\+' | tr '[:upper:]' '[:lower:]')
             
-            # We're using Maven Central's repository to download the schema2proto library
-            # Maven Central is the primary repository for Java dependencies
-            MAVEN_URL="https://repo1.maven.org/maven2"
+            echo "Processing $sport/$league $version from $endpoint"
             
-            # The full path to our specific version of schema2proto-lib
-            SCHEMA2PROTO_PATH="no/entur/schema2proto-lib/1.97/schema2proto-lib-1.97.jar"
+            # Create directories
+            mkdir -p temp/{xsd,json}/$sport/$league/$version
+            mkdir -p priv/schemas/$sport/$league/$version
             
-            echo "Downloading schema2proto-lib version 1.97 from Maven Central"
+            # Download and extract schema
+            curl -L "$endpoint" -o "temp/$sport-$league-schema.zip"
+            unzip -o "temp/$sport-$league-schema.zip" -d "temp/xsd/$sport/$league/$version"
             
-            # Download with retry logic in case of temporary network issues
-            for i in {1..3}; do
-              if curl -L --fail "$MAVEN_URL/$SCHEMA2PROTO_PATH" -o "tools/schema2proto.jar"; then
-                echo "Download successful!"
-                break
-              else
-                echo "Attempt $i failed. Retrying after 5 seconds..."
-                sleep 5
-              fi
+            # Clean up MacOS files
+            find temp/xsd/$sport/$league -name "._*" -delete
+            find temp/xsd/$sport/$league -name ".DS_Store" -delete
+            find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
+            
+            # Convert XSD files to JSON Schema
+            find "temp/xsd/$sport/$league/$version" -name "*.xsd" -type f | while read -r xsd_file; do
+              base_name=$(basename "$xsd_file" .xsd)
+              output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
+              
+              xsd2json "$xsd_file" \
+                --output "$output_file" \
+                --pretty \
+                --module-name "${base_name}"
             done
-            
-            # Verify our download was successful
-            if [ ! -f tools/schema2proto.jar ] || [ ! -s tools/schema2proto.jar ]; then
-              echo "Error: Failed to download schema2proto-lib"
-              exit 1
-            fi
-            
-            echo "schema2proto-lib has been downloaded and verified"
-            ls -l tools/schema2proto.jar
-
-      - name: Process Sportradar Endpoints
-        run: |
-              # Utility function to extract league and version from URL
-              extract_league_version() {
-                local url="$1"
-                local league=$(echo "$url" | grep -o '[A-Z]\{3\}' | head -1 | tr '[:upper:]' '[:lower:]')
-                local version=$(echo "$url" | grep -o 'v[0-9]\+' | tr '[:upper:]' '[:lower:]')
-                echo "$league $version"
-              }
-              
-              # Function to discover all schema versions in a directory
-              discover_versions() {
-                local xsd_dir="$1"
-                find "$xsd_dir" -type f -name "*.xsd" -exec basename {} \; | \
-                  grep -o 'v[0-9]\+\.[0-9]\+' | sort -u
-              }
-              
-              # Function to process a set of related schema files
-              process_schema_set() {
-                local xsd_dir="$1"
-                local proto_dir="$2"
-                local sport="$3"
-                local league="$4"
-                local version="$5"
-                local schema_files="$6"
-                local namespace="$7"
-                
-                echo "Processing schema set for $namespace (version $version)"
-                
-                # Create work directory
-                local work_dir="$proto_dir/work_${version}"
-                mkdir -p "$work_dir"
-                
-                # Copy all schema files
-                echo "Copying schema files to work directory:"
-                find "$xsd_dir" -name "*${version}.xsd" -type f -exec cp {} "$work_dir/" \;
-                
-                # Determine processing order based on dependencies
-                # 1. Base common file first (defines basic types)
-                # 2. Domain-specific common files next (like common-standings)
-                # 3. Other files last
-                local processing_order=""
-                
-                # First, look for the base common file
-                if [ -f "$work_dir/common-${version}.xsd" ]; then
-                  processing_order="common-${version}.xsd"
-                fi
-                
-                # Next, add domain-specific common files
-                for file in "$work_dir"/common-*-${version}.xsd; do
-                  if [ -f "$file" ] && [ "$(basename "$file")" != "common-${version}.xsd" ]; then
-                    processing_order="$processing_order $(basename "$file")"
-                  fi
-                done
-                
-                # Finally, add remaining files
-                for file in "$work_dir"/*${version}.xsd; do
-                  if [[ ! "$(basename "$file")" =~ ^common ]]; then
-                    processing_order="$processing_order $(basename "$file")"
-                  fi
-                done
-                
-                echo "Processing files in order:"
-                echo "$processing_order"
-                
-                # Process all files together with clear dependency order
-                local output_dir="$proto_dir/$version"
-                mkdir -p "$output_dir"
-                
-                java -jar tools/schema2proto.jar \
-                  --outputDirectory="$output_dir" \
-                  --defaultProtoPackage="$namespace" \
-                  --options="java_package:com.$namespace" \
-                  --includeMessageDocs=true \
-                  --includeFieldDocs=true \
-                  --inheritanceToComposition=true \
-                  --skipEmptyTypeInheritance=true \
-                  --customImportLocations="$work_dir" \
-                  --derivationBySubsumption=true \
-                  --failIfRemovedFields=false \
-                  --includeXsdOptions=true \
-                  $(for file in $processing_order; do echo "$work_dir/$file"; done)
-                
-                local result=$?
-                if [ $result -ne 0 ]; then
-                  echo "Error: schema2proto processing failed with exit code $result"
-                  echo "Files in work directory during error:"
-                  ls -l "$work_dir"
-                  return $result
-                fi
-                
-                rm -rf "$work_dir"
-              }
-              
-              # Function to process all schemas for a sport
-              process_sport_schemas() {
-                local xsd_dir="$1"
-                local proto_dir="$2"
-                local sport="$3"
-                local league="$4"
-                
-                echo "Analyzing schema structure for $sport/$league..."
-                
-                # Process main directory schemas
-                local versions=($(discover_versions "$xsd_dir"))
-                echo "Found versions: ${versions[*]}"
-                
-                for version in "${versions[@]}"; do
-                  # Process common files first
-                  local common_files=$(find "$xsd_dir" -maxdepth 1 -name "common*${version}.xsd" -printf "%f ")
-                  if [ -n "$common_files" ]; then
-                    echo "Processing common files for version $version"
-                    process_schema_set \
-                      "$xsd_dir" \
-                      "$proto_dir" \
-                      "$sport" \
-                      "$league" \
-                      "$version" \
-                      "$common_files" \
-                      "sportradar.sports.$sport.$league.common.$version"
-                  fi
-                  
-                  # Then process non-common files
-                  local other_files=$(find "$xsd_dir" -maxdepth 1 -name "*${version}.xsd" ! -name "common*" -printf "%f ")
-                  if [ -n "$other_files" ]; then
-                    echo "Processing other files for version $version"
-                    process_schema_set \
-                      "$xsd_dir" \
-                      "$proto_dir" \
-                      "$sport" \
-                      "$league" \
-                      "$version" \
-                      "$other_files" \
-                      "sportradar.sports.$sport.$league.$version"
-                  fi
-                done
-                
-                # Process subdirectories with similar modifications for file handling
-                find "$xsd_dir" -mindepth 1 -maxdepth 1 -type d ! -name ".*" | while read -r subdir; do
-                  local subdir_name=$(basename "$subdir")
-                  echo "Processing subdirectory: $subdir_name"
-                  
-                  local subdir_versions=($(discover_versions "$subdir"))
-                  for subversion in "${subdir_versions[@]}"; do
-                    local sub_files=$(find "$subdir" -name "*${subversion}.xsd" -printf "%f ")
-                    if [ -n "$sub_files" ]; then
-                      echo "Processing $subdir_name files for version $subversion"
-                      process_schema_set \
-                        "$subdir" \
-                        "$proto_dir/${subdir_name,,}" \
-                        "$sport" \
-                        "$league" \
-                        "$subversion" \
-                        "$sub_files" \
-                        "sportradar.sports.$sport.$league.${subdir_name,,}.$subversion"
-                    fi
-                  done
-                done
-              }
-              
-              # Main processing loop
-              echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
-                read -r league version <<< $(extract_league_version "$endpoint")
-                
-                echo "Processing $sport/$league $version from $endpoint"
-                
-                # Create directories and download schema
-                mkdir -p temp/xsd/$sport/$league temp/proto/$sport/$league
-                
-                # Download and extract schema
-                curl -L "$endpoint" -o "temp/$sport-$league-schema.zip"
-                unzip -o "temp/$sport-$league-schema.zip" -d "temp/xsd/$sport/$league"
-                rm "temp/$sport-$league-schema.zip"
-                
-                # Clean up MacOS files
-                find temp/xsd/$sport/$league -name "._*" -delete
-                find temp/xsd/$sport/$league -name ".DS_Store" -delete
-                find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
-                
-                # Process all schemas
-                process_sport_schemas \
-                  "temp/xsd/$sport/$league" \
-                  "temp/proto/$sport/$league" \
-                  "$sport" \
-                  "$league"
-                
-                # Generate Elixir code
-                echo "Generating Elixir code..."
-                find "temp/proto/$sport/$league" -name "*.proto" -type f | sort | while read -r proto_file; do
-                  relative_path=${proto_file#temp/proto/$sport/$league/}
-                  output_dir="lib/sportradar/sports/$sport/$league/$(dirname "$relative_path")"
-                  
-                  mkdir -p "$output_dir"
-                  
-                  protoc \
-                    --elixir_out="$output_dir" \
-                    --proto_path="$(dirname "$proto_file")" \
-                    "$proto_file"
-                done
-              done
-
-      - name: Clean up temporary files
-        run: |
+          done
+          
+          # Clean up temporary files
           rm -rf temp
-  
-      - name: Commit and push changes
+
+      - name: Commit and push schema files
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          git add lib/sportradar
+          git add priv/schemas
           
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: update Sportradar proto definitions"
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update Sportradar JSON schemas"
             git push origin main
+          else
+            echo "No changes to commit"
+          fi
+
+          - name: Set up Elixir
+          uses: erlef/setup-beam@v1
+          with:
+            otp-version: '25.0'
+            elixir-version: '1.14.0'
+  
+      - name: Generate Elixir Modules
+        run: |
+          # For each sport/league combination in the schemas
+          for sport_dir in priv/schemas/*/; do
+            sport=$(basename "$sport_dir")
+            
+            for league_dir in "$sport_dir"/*/; do
+              league=$(basename "$league_dir")
+              
+              for version_dir in "$league_dir"/*/; do
+                version=$(basename "$version_dir")
+                
+                echo "Generating schemas for $sport/$league/$version"
+                mix sportradar.gen.schemas \
+                  --sport "$sport" \
+                  --league "$league" \
+                  --version "$version"
+              done
+            done
+          done
+  
+      - name: Commit generated Elixir modules
+        run: |
+          git add lib/sportradar/sports
+          
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update generated Sportradar modules"
+            git push origin main
+          else
+            echo "No changes to generated modules"
           fi
