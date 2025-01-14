@@ -102,6 +102,49 @@ jobs:
                 echo "$league $version"
               }
               
+              process_xsd_files() {
+                local xsd_dir="$1"
+                local proto_dir="$2"
+                local sport="$3"
+                local league="$4"
+                local version="$5"
+    
+                # First process any files that start with "common"
+                # These typically define base types used by other schemas
+                echo "Processing common files first..."
+                find "$xsd_dir" -name "common*.xsd" -type f | sort | while read -r xsd_file; do
+                  echo "Processing common file: $xsd_file"
+                  java -jar tools/schema2proto.jar \
+                    --outputDirectory="$proto_dir" \
+                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
+                    --defaultProtoPackage="sportradar.sports.$sport.$league.common" \
+                    --options="java_package:com.sportradar.sports.$sport.$league.common" \
+                    --includeMessageDocs=true \
+                    --includeFieldDocs=true \
+                    --inheritanceToComposition=true \
+                    --skipEmptyTypeInheritance=true \
+                    --customImportLocations="$xsd_dir" \
+                    "$xsd_file"
+                done
+    
+                # Then process all other files
+                echo "Processing remaining files..."
+                find "$xsd_dir" -name "*.xsd" ! -name "common*.xsd" -type f | sort | while read -r xsd_file; do
+                  echo "Processing file: $xsd_file"
+                  java -jar tools/schema2proto.jar \
+                    --outputDirectory="$proto_dir" \
+                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
+                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version" \
+                    --options="java_package:com.sportradar.sports.$sport.$league.$version" \
+                    --includeMessageDocs=true \
+                    --includeFieldDocs=true \
+                    --inheritanceToComposition=true \
+                    --skipEmptyTypeInheritance=true \
+                    --customImportLocations="$xsd_dir" \
+                    "$xsd_file"
+                done
+              }
+              
               # Parse endpoints from input JSON and process each sport
               echo '${{ inputs.sports_endpoints }}' | jq -r 'to_entries | .[] | @text "\(.key) \(.value)"' | while read -r sport endpoint; do
                 # Extract league and version from the endpoint URL
@@ -123,51 +166,21 @@ jobs:
                 find temp/xsd/$sport/$league -name ".DS_Store" -delete
                 find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
                 
-                # First process common files
-                find "temp/xsd/$sport/$league" -name "common*.xsd" | while read -r xsd_file; do
-                  output_dir="temp/proto/$sport/$league"
-                  mkdir -p "$output_dir"
-                  
-                  echo "Processing common file: $xsd_file"
-                  
-                  java -jar tools/schema2proto.jar \
-                    --outputDirectory="$output_dir" \
-                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version.common" \
-                    --options="java_package:com.sportradar.sports.$sport.$league.$version.common" \
-                    --includeMessageDocs=true \
-                    --includeFieldDocs=true \
-                    --customImportLocations="$(dirname "$xsd_file")" \
-                    "$xsd_file"
-                done
-                
-                # Then process other files
-                find "temp/xsd/$sport/$league" -not -name "common*.xsd" -name "*.xsd" | while read -r xsd_file; do
-                  output_dir="temp/proto/$sport/$league"
-                  
-                  echo "Processing file: $xsd_file"
-                  
-                  java -jar tools/schema2proto.jar \
-                    --outputDirectory="$output_dir" \
-                    --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version" \
-                    --options="java_package:com.sportradar.sports.$sport.$league.$version" \
-                    --includeMessageDocs=true \
-                    --includeFieldDocs=true \
-                    --customImportLocations="$(dirname "$xsd_file")" \
-                    --customNameMappings="s:=common_" \
-                    "$xsd_file"
-                done
+                # Process all XSD files in the correct order
+                xsd_dir="temp/xsd/$sport/$league"
+                proto_dir="temp/proto/$sport/$league"
+                process_xsd_files "$xsd_dir" "$proto_dir" "$sport" "$league" "$version"
                 
                 # Generate Elixir code from the proto files
-                find "temp/proto/$sport/$league" -name "*.proto" | while read -r proto_file; do
+                echo "Generating Elixir code..."
+                find "$proto_dir" -name "*.proto" | sort | while read -r proto_file; do
                   echo "Generating Elixir code for $proto_file"
                   
                   mkdir -p "lib/sportradar/sports/$sport/$league/$version"
                   
                   protoc \
                     --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
-                    --proto_path="$(dirname "$proto_file")" \
+                    --proto_path="$proto_dir" \
                     "$proto_file"
                 done
               done
