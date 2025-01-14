@@ -29,19 +29,13 @@ jobs:
         with:
           node-version: '16'
 
-      - name: Install xsd2json
+      - name: Install SWI-Prolog
         run: |
-             mkdir temp
-
-             cd temp
-
-             git clone https://github.com/fnogatz/xsd2json.git
-
-             cd xsd2json
-
-             npm run preinstall
-
-             cd ../../
+            sudo apt-get update
+            sudo apt-get install -y swi-prolog
+  
+      - name: Install xsd2json
+        run: npm install -g xsd2json
 
       - name: Process Schemas
         run: |
