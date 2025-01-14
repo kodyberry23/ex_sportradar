@@ -102,46 +102,67 @@ jobs:
                 echo "$league $version"
               }
               
-              process_xsd_files() {
-                local xsd_dir="$1"
+              process_xsd_directory() {
+                local base_dir="$1"
                 local proto_dir="$2"
                 local sport="$3"
                 local league="$4"
                 local version="$5"
-    
-                # First process any files that start with "common"
-                # These typically define base types used by other schemas
-                echo "Processing common files first..."
-                find "$xsd_dir" -name "common*.xsd" -type f | sort | while read -r xsd_file; do
+                local relative_path="${6:-}"  # Optional parameter for subdirectories
+                
+                local current_dir="${base_dir}${relative_path:+/$relative_path}"
+                local package_suffix="${relative_path:+.${relative_path,,}}"  # Convert to lowercase if exists
+                
+                echo "Processing directory: $current_dir"
+                
+                # First process common files in current directory
+                find "$current_dir" -maxdepth 1 -name "common*.xsd" -type f | sort | while read -r xsd_file; do
                   echo "Processing common file: $xsd_file"
+                  
+                  # Create a subdirectory in proto_dir if we're in a nested directory
+                  local output_subdir="$proto_dir${relative_path:+/$relative_path}"
+                  mkdir -p "$output_subdir"
+                  
                   java -jar tools/schema2proto.jar \
-                    --outputDirectory="$proto_dir" \
+                    --outputDirectory="$output_subdir" \
                     --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-                    --defaultProtoPackage="sportradar.sports.$sport.$league.common" \
-                    --options="java_package:com.sportradar.sports.$sport.$league.common" \
+                    --defaultProtoPackage="sportradar.sports.$sport.$league.common${package_suffix}" \
+                    --options="java_package:com.sportradar.sports.$sport.$league.common${package_suffix}" \
                     --includeMessageDocs=true \
                     --includeFieldDocs=true \
                     --inheritanceToComposition=true \
                     --skipEmptyTypeInheritance=true \
-                    --customImportLocations="$xsd_dir" \
+                    --customImportLocations="$current_dir,$base_dir" \
+                    --derivationBySubsumption=true \
                     "$xsd_file"
                 done
-    
-                # Then process all other files
-                echo "Processing remaining files..."
-                find "$xsd_dir" -name "*.xsd" ! -name "common*.xsd" -type f | sort | while read -r xsd_file; do
+                
+                # Then process non-common files in current directory
+                find "$current_dir" -maxdepth 1 -name "*.xsd" ! -name "common*.xsd" -type f | sort | while read -r xsd_file; do
                   echo "Processing file: $xsd_file"
+                  
+                  local output_subdir="$proto_dir${relative_path:+/$relative_path}"
+                  mkdir -p "$output_subdir"
+                  
                   java -jar tools/schema2proto.jar \
-                    --outputDirectory="$proto_dir" \
+                    --outputDirectory="$output_subdir" \
                     --outputFilename="$(basename "$xsd_file" .xsd).proto" \
-                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version" \
-                    --options="java_package:com.sportradar.sports.$sport.$league.$version" \
+                    --defaultProtoPackage="sportradar.sports.$sport.$league.$version${package_suffix}" \
+                    --options="java_package:com.sportradar.sports.$sport.$league.$version${package_suffix}" \
                     --includeMessageDocs=true \
                     --includeFieldDocs=true \
                     --inheritanceToComposition=true \
                     --skipEmptyTypeInheritance=true \
-                    --customImportLocations="$xsd_dir" \
+                    --customImportLocations="$current_dir,$base_dir" \
+                    --derivationBySubsumption=true \
                     "$xsd_file"
+                done
+                
+                # Process subdirectories
+                find "$current_dir" -mindepth 1 -maxdepth 1 -type d ! -name ".*" | while read -r subdir; do
+                  local subdir_name=$(basename "$subdir")
+                  local new_relative_path="${relative_path:+$relative_path/}$subdir_name"
+                  process_xsd_directory "$base_dir" "$proto_dir" "$sport" "$league" "$version" "$new_relative_path"
                 done
               }
               
@@ -166,20 +187,25 @@ jobs:
                 find temp/xsd/$sport/$league -name ".DS_Store" -delete
                 find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
                 
-                # Process all XSD files in the correct order
+                # Process all XSD files recursively
                 xsd_dir="temp/xsd/$sport/$league"
                 proto_dir="temp/proto/$sport/$league"
-                process_xsd_files "$xsd_dir" "$proto_dir" "$sport" "$league" "$version"
+                process_xsd_directory "$xsd_dir" "$proto_dir" "$sport" "$league" "$version"
                 
-                # Generate Elixir code from the proto files
+                # Generate Elixir code from all proto files
                 echo "Generating Elixir code..."
-                find "$proto_dir" -name "*.proto" | sort | while read -r proto_file; do
+                find "$proto_dir" -name "*.proto" -type f | sort | while read -r proto_file; do
                   echo "Generating Elixir code for $proto_file"
                   
-                  mkdir -p "lib/sportradar/sports/$sport/$league/$version"
+                  # Determine the relative path from proto_dir
+                  local rel_path=${proto_file#$proto_dir/}
+                  local rel_dir=$(dirname "$rel_path")
+                  
+                  # Create corresponding directory in lib
+                  mkdir -p "lib/sportradar/sports/$sport/$league/$version/${rel_dir}"
                   
                   protoc \
-                    --elixir_out="lib/sportradar/sports/$sport/$league/$version" \
+                    --elixir_out="lib/sportradar/sports/$sport/$league/$version/${rel_dir}" \
                     --proto_path="$proto_dir" \
                     "$proto_file"
                 done
