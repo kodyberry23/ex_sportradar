@@ -113,7 +113,7 @@ jobs:
                 local sport="$3"
                 local league="$4"
                 local version="$5"
-                local schema_files=("$6")
+                local schema_files="$6"  # This is now a space-separated string
                 local namespace="$7"
                 
                 echo "Processing schema set for $namespace (version $version)"
@@ -122,16 +122,30 @@ jobs:
                 local work_dir="$proto_dir/work_${version}"
                 mkdir -p "$work_dir"
                 
-                # Copy schemas to work directory
-                for file in "${schema_files[@]}"; do
-                  cp "$xsd_dir/$file" "$work_dir/"
-                  echo "  Included schema: $file"
+                # Convert space-separated string to array and copy files
+                echo "Copying schema files to work directory:"
+                for file in $schema_files; do
+                  echo "  Copying $file"
+                  if [ -f "$xsd_dir/$file" ]; then
+                    cp "$xsd_dir/$file" "$work_dir/"
+                  else
+                    echo "  Warning: File not found: $xsd_dir/$file"
+                    continue
+                  fi
                 done
+                
+                # Find first schema file to process
+                local main_schema=$(ls "$work_dir"/*.xsd 2>/dev/null | head -n 1)
+                if [ -z "$main_schema" ]; then
+                  echo "Error: No schema files found in work directory"
+                  return 1
+                fi
                 
                 # Process with schema2proto
                 local output_dir="$proto_dir/$version"
                 mkdir -p "$output_dir"
                 
+                echo "Processing schema with main file: $(basename "$main_schema")"
                 java -jar tools/schema2proto.jar \
                   --outputDirectory="$output_dir" \
                   --defaultProtoPackage="$namespace" \
@@ -142,7 +156,13 @@ jobs:
                   --skipEmptyTypeInheritance=true \
                   --customImportLocations="$work_dir" \
                   --derivationBySubsumption=true \
-                  "$work_dir/${schema_files[0]}"
+                  "$main_schema"
+                
+                local result=$?
+                if [ $result -ne 0 ]; then
+                  echo "Error: schema2proto processing failed with exit code $result"
+                  return $result
+                fi
                 
                 rm -rf "$work_dir"
               }
@@ -162,8 +182,8 @@ jobs:
                 
                 for version in "${versions[@]}"; do
                   # Process common files first
-                  local common_files=($(find "$xsd_dir" -maxdepth 1 -name "common*${version}.xsd" -printf "%f\n"))
-                  if [ ${#common_files[@]} -gt 0 ]; then
+                  local common_files=$(find "$xsd_dir" -maxdepth 1 -name "common*${version}.xsd" -printf "%f ")
+                  if [ -n "$common_files" ]; then
                     echo "Processing common files for version $version"
                     process_schema_set \
                       "$xsd_dir" \
@@ -171,13 +191,13 @@ jobs:
                       "$sport" \
                       "$league" \
                       "$version" \
-                      "${common_files[*]}" \
+                      "$common_files" \
                       "sportradar.sports.$sport.$league.common.$version"
                   fi
                   
                   # Then process non-common files
-                  local other_files=($(find "$xsd_dir" -maxdepth 1 -name "*${version}.xsd" ! -name "common*" -printf "%f\n"))
-                  if [ ${#other_files[@]} -gt 0 ]; then
+                  local other_files=$(find "$xsd_dir" -maxdepth 1 -name "*${version}.xsd" ! -name "common*" -printf "%f ")
+                  if [ -n "$other_files" ]; then
                     echo "Processing other files for version $version"
                     process_schema_set \
                       "$xsd_dir" \
@@ -185,20 +205,20 @@ jobs:
                       "$sport" \
                       "$league" \
                       "$version" \
-                      "${other_files[*]}" \
+                      "$other_files" \
                       "sportradar.sports.$sport.$league.$version"
                   fi
                 done
                 
-                # Process subdirectories
+                # Process subdirectories with similar modifications for file handling
                 find "$xsd_dir" -mindepth 1 -maxdepth 1 -type d ! -name ".*" | while read -r subdir; do
                   local subdir_name=$(basename "$subdir")
                   echo "Processing subdirectory: $subdir_name"
                   
                   local subdir_versions=($(discover_versions "$subdir"))
                   for subversion in "${subdir_versions[@]}"; do
-                    local sub_files=($(find "$subdir" -name "*${subversion}.xsd" -printf "%f\n"))
-                    if [ ${#sub_files[@]} -gt 0 ]; then
+                    local sub_files=$(find "$subdir" -name "*${subversion}.xsd" -printf "%f ")
+                    if [ -n "$sub_files" ]; then
                       echo "Processing $subdir_name files for version $subversion"
                       process_schema_set \
                         "$subdir" \
@@ -206,7 +226,7 @@ jobs:
                         "$sport" \
                         "$league" \
                         "$subversion" \
-                        "${sub_files[*]}" \
+                        "$sub_files" \
                         "sportradar.sports.$sport.$league.${subdir_name,,}.$subversion"
                     fi
                   done
