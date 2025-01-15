@@ -55,7 +55,9 @@ jobs:
             
             # Download and extract schema
             curl -L "$endpoint" -o "temp/$sport-$league-schema.zip"
-            unzip -o "temp/$sport-$league-schema.zip" -d "temp/xsd/$sport/$league/$version"
+            
+            # Extract to a flat directory structure
+            unzip -j -o "temp/$sport-$league-schema.zip" "*.xsd" -d "temp/xsd/$sport/$league/$version"
             
             # Clean up MacOS files
             find temp/xsd/$sport/$league -name "._*" -delete
@@ -66,8 +68,15 @@ jobs:
             find "temp/xsd/$sport/$league/$version" -name "*.xsd" -type f | while read -r xsd_file; do
               base_name=$(basename "$xsd_file" .xsd)
               output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
-
-              xsd2json "$xsd_file" > "$output_file"
+              
+              # Create temporary working directory for conversion
+              tmp_dir="temp/conversion_${base_name}"
+              mkdir -p "$tmp_dir"
+              cp "temp/xsd/$sport/$league/$version"/*.xsd "$tmp_dir/"
+              
+              # Convert using the copied files
+              xsd2json "$tmp_dir/$(basename "$xsd_file")" > "$output_file"
+              rm -rf "$tmp_dir"
             done
           done
           
