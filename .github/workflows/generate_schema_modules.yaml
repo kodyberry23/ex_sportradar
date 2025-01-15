@@ -55,28 +55,31 @@ jobs:
             
             # Download and extract schema
             curl -L "$endpoint" -o "temp/$sport-$league-schema.zip"
-            
-            # Extract to a flat directory structure
-            unzip -j -o "temp/$sport-$league-schema.zip" "*.xsd" -d "temp/xsd/$sport/$league/$version"
+            unzip -o "temp/$sport-$league-schema.zip" -d "temp/xsd/$sport/$league/$version"
             
             # Clean up MacOS files
             find temp/xsd/$sport/$league -name "._*" -delete
             find temp/xsd/$sport/$league -name ".DS_Store" -delete
             find temp/xsd/$sport/$league -name "__MACOSX" -type d -exec rm -r {} +
             
-            # Convert XSD files to JSON Schema
+            # Convert XSD files to JSON Schema while preserving directory structure
             find "temp/xsd/$sport/$league/$version" -name "*.xsd" -type f | while read -r xsd_file; do
+              # Get relative path from the version directory
+              rel_path=$(realpath --relative-to="temp/xsd/$sport/$league/$version" "$(dirname "$xsd_file")")
               base_name=$(basename "$xsd_file" .xsd)
-              output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
               
-              # Create temporary working directory for conversion
-              tmp_dir="temp/conversion_${base_name}"
-              mkdir -p "$tmp_dir"
-              cp "temp/xsd/$sport/$league/$version"/*.xsd "$tmp_dir/"
+              if [ "$rel_path" = "." ]; then
+                output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
+                mkdir -p "$(dirname "$output_file")"
+              else
+                output_file="priv/schemas/$sport/$league/$version/$rel_path/${base_name}.json"
+                mkdir -p "$(dirname "$output_file")"
+              fi
               
-              # Convert using the copied files
-              xsd2json "$tmp_dir/$(basename "$xsd_file")" > "$output_file"
-              rm -rf "$tmp_dir"
+              echo "Converting $xsd_file to $output_file"
+              
+              # Run conversion in the original directory to preserve relative paths
+              (cd "$(dirname "$xsd_file")" && xsd2json "$(basename "$xsd_file")" > "$output_file")
             done
           done
           
