@@ -49,9 +49,9 @@ jobs:
             
             echo "Processing $sport/$league $version from $endpoint"
             
-            # Create directories
-            mkdir -p temp/{xsd,json}/$sport/$league/$version
-            mkdir -p priv/schemas/$sport/$league/$version
+            # Create base directories
+            mkdir -p "temp/xsd/$sport/$league/$version"
+            mkdir -p "priv/schemas/$sport/$league/$version"
             
             # Download and extract schema
             curl -L "$endpoint" -o "temp/$sport-$league-schema.zip"
@@ -68,18 +68,24 @@ jobs:
               rel_path=$(realpath --relative-to="temp/xsd/$sport/$league/$version" "$(dirname "$xsd_file")")
               base_name=$(basename "$xsd_file" .xsd)
               
+              # Create output directory structure
               if [ "$rel_path" = "." ]; then
-                output_file="priv/schemas/$sport/$league/$version/${base_name}.json"
-                mkdir -p "$(dirname "$output_file")"
+                output_dir="priv/schemas/$sport/$league/$version"
               else
-                output_file="priv/schemas/$sport/$league/$version/$rel_path/${base_name}.json"
-                mkdir -p "$(dirname "$output_file")"
+                output_dir="priv/schemas/$sport/$league/$version/$rel_path"
               fi
               
+              # Ensure output directory exists
+              mkdir -p "$output_dir"
+              
+              output_file="$output_dir/${base_name}.json"
               echo "Converting $xsd_file to $output_file"
               
               # Run conversion in the original directory to preserve relative paths
-              (cd "$(dirname "$xsd_file")" && xsd2json "$(basename "$xsd_file")" > "$output_file")
+              # Redirect output to a temporary file first, then move it to final location
+              temp_output=$(mktemp)
+              (cd "$(dirname "$xsd_file")" && xsd2json "$(basename "$xsd_file")" > "$temp_output")
+              mv "$temp_output" "$output_file"
             done
           done
           
