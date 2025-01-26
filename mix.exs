@@ -8,6 +8,7 @@ defmodule Sportradar.MixProject do
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      description: description(),
       package: package(),
       name: "ExSportradar",
       source_url: "https://github.com/kodyberry23/ex_sportradar"
@@ -30,6 +31,11 @@ defmodule Sportradar.MixProject do
       {:ex_doc, "~> 0.16", only: :dev, runtime: false, optional: true}
     ]
   end
+
+  defp description() do
+    "Sportradar API client library for Elixir."
+  end
+
 
   defp package do
     [
