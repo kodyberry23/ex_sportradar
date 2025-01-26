@@ -62,12 +62,12 @@ This is a comprehensive checklist of Sportradar sports APIs we plan to implement
 
 ## Installation
 
-Add `sportradar` to your list of dependencies in `mix.exs`:
+Add `ex_sportradar` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:sportradar, "~> 0.1.0"}
+    {:ex_sportradar, "~> 0.1.0"}
   ]
 end
 ```
