@@ -8,8 +8,8 @@ defmodule Sportradar.DefaultAdapterConfigs do
   def get_config(:stream, Tesla.Adapter.Hackney) do
     [
       recv_timeout: :infinity,
-      stream_to: self(),
-      async: true
+      async: true,
+      follow_redirect: true
     ]
   end
 
@@ -28,9 +28,7 @@ defmodule Sportradar.DefaultAdapterConfigs do
   def get_config(:default, Tesla.Adapter.Finch), do: [name: SportsradarFinch]
 
   @impl true
-  def get_config(:stream = type, Tesla.Adapter.Finch = adapter) do
-    {:error, Sportradar.Error.new("Adapter #{inspect(adapter)} does not support #{type} mode")}
-  end
+  def get_config(:stream, Tesla.Adapter.Finch), do: [name: SportsradarFinch]
 
   @impl true
   def get_config(type, adapter) do

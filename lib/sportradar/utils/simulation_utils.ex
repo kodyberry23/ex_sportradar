@@ -105,11 +105,11 @@ defmodule Sportradar.Utils.SimulationUtils do
 
   ## Examples
 
-      iex> SimulationUtil.build_subscribe_url("json_feed", "recording123")
-      "https://playback.sportradar.com/subscribe/json_feed?recording_id=recording123"
+      iex> SimulationUtil.build_subscribe_url("events", "recording123")
+      "https://playback.sportradar.com/subscribe/events?recording_id=recording123"
 
   """
-  def build_subscribe_url(recording_id, feed_name \\ "json_feed") do
+  def build_subscribe_url(recording_id, feed_name \\ "events") do
     url = "https://playback.sportradar.com/subscribe/#{feed_name}?recording_id=#{recording_id}"
 
     {:ok, url}

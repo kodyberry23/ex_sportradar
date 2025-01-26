@@ -7,6 +7,14 @@ defmodule Sportradar.Error do
 
   defexception [:message, :status, :description]
 
+  def from_response(%Tesla.Env{body: body} = response) when is_reference(body) do
+    %__MODULE__{
+      status: response.status,
+      message: "Streaming request failed",
+      description: "Request failed with status code #{response.status}"
+    }
+  end
+
   def from_response(%Tesla.Env{} = response) do
     %__MODULE__{
       status: response.status,
@@ -29,4 +37,18 @@ defmodule Sportradar.InvalidAuthError do
                config :sportradar,
                  api_key: System.get_env("SPORTRADAR_API_KEY")
                """
+end
+
+defmodule Sportradar.InvalidClientTypeError do
+  defexception message: """
+               Invalid client type passed when creating a new Sportradar.Client.
+
+               Acceptable args: :default, :stream
+
+               please provide an accepted arg and try again.
+               """
+end
+
+defmodule Sportradar.InvalidConfigError do
+  defexception [:message]
 end

@@ -6,8 +6,8 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent do
   embedded_schema do
     field(:locale, :string)
 
-    embeds_one(:payload, Payload)
-    embeds_one(:metadata, Metadata)
+    embeds_one(:payload, Sportradar.Sports.Football.Nfl.PushEvent.Payload)
+    embeds_one(:metadata, Sportradar.Sports.Football.Nfl.PushEvent.Metadata)
   end
 
   def changeset(push_event, attrs) do
@@ -27,8 +27,8 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.Payload do
   @embedded_fields [:game, :event]
 
   embedded_schema do
-    embeds_one(:game, Game)
-    embeds_one(:event, Event)
+    embeds_one(:game, Sportradar.Sports.Football.Nfl.PushEvent.Game)
+    embeds_one(:event, Sportradar.Sports.Football.Nfl.PushEvent.Event)
   end
 
   def changeset(payload, attrs) do
@@ -64,7 +64,7 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.Game do
     field(:clock, :string)
     field(:sr_id, :string)
 
-    embeds_one(:summary, GameSummary)
+    embeds_one(:summary, Sportradar.Sports.Football.Nfl.PushEvent.GameSummary)
   end
 
   def changeset(game, attrs) do
@@ -83,8 +83,8 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.GameSummary do
   @embedded_fields [:home, :away]
 
   embedded_schema do
-    embeds_one(:home, Team)
-    embeds_one(:away, Team)
+    embeds_one(:home, Sportradar.Sports.Football.Nfl.PushEvent.Team)
+    embeds_one(:away, Sportradar.Sports.Football.Nfl.PushEvent.Team)
   end
 
   def changeset(summary, attrs) do
@@ -144,12 +144,12 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.Event do
     field(:run_pass_option, :boolean)
     field(:description, :string)
 
-    embeds_one(:period, Period)
-    embeds_one(:drive, Drive)
-    embeds_one(:start_situation, Situation)
-    embeds_one(:end_situation, Situation)
-    embeds_many(:statistics, Statistic)
-    embeds_many(:details, Detail)
+    embeds_one(:period, Sportradar.Sports.Football.Nfl.PushEvent.Period)
+    embeds_one(:drive, Sportradar.Sports.Football.Nfl.PushEvent.Drive)
+    embeds_one(:start_situation, Sportradar.Sports.Football.Nfl.PushEvent.Situation)
+    embeds_one(:end_situation, Sportradar.Sports.Football.Nfl.PushEvent.Situation)
+    embeds_many(:statistics, Sportradar.Sports.Football.Nfl.PushEvent.Statistic)
+    embeds_many(:details, Sportradar.Sports.Football.Nfl.PushEvent.Detail)
   end
 
   def changeset(event, attrs) do
@@ -219,8 +219,8 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.Situation do
     field(:down, :integer)
     field(:yfd, :integer)
 
-    embeds_one(:possession, SituationTeam)
-    embeds_one(:location, SituationTeam)
+    embeds_one(:possession, Sportradar.Sports.Football.Nfl.PushEvent.SituationTeam)
+    embeds_one(:location, Sportradar.Sports.Football.Nfl.PushEvent.SituationTeam)
   end
 
   def changeset(situation, attrs) do
@@ -290,8 +290,8 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.Statistic do
     field(:def_target, :integer)
     field(:def_comp, :integer)
 
-    embeds_one(:team, StatTeam)
-    embeds_one(:player, StatPlayer)
+    embeds_one(:team, Sportradar.Sports.Football.Nfl.PushEvent.StatTeam)
+    embeds_one(:player, Sportradar.Sports.Football.Nfl.PushEvent.StatPlayer)
   end
 
   def changeset(statistic, attrs) do
@@ -358,10 +358,10 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.Detail do
     field(:result, :string)
     field(:alt_description, :string)
 
-    embeds_one(:start_location, Location)
-    embeds_one(:end_location, Location)
-    embeds_many(:players, DetailPlayer)
-    embeds_one(:penalty, Penalty)
+    embeds_one(:start_location, Sportradar.Sports.Football.Nfl.PushEvent.Location)
+    embeds_one(:end_location, Sportradar.Sports.Football.Nfl.PushEvent.Location)
+    embeds_many(:players, Sportradar.Sports.Football.Nfl.PushEvent.DetailPlayer)
+    embeds_one(:penalty, Sportradar.Sports.Football.Nfl.PushEvent.Penalty)
   end
 
   def changeset(detail, attrs) do
@@ -425,7 +425,7 @@ defmodule Sportradar.Sports.Football.Nfl.PushEvent.Penalty do
     field(:result, :string)
     field(:yards, :integer)
 
-    embeds_one(:team, StatTeam)
+    embeds_one(:team, Sportradar.Sports.Football.Nfl.PushEvent.StatTeam)
   end
 
   def changeset(penalty, attrs) do
