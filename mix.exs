@@ -7,7 +7,10 @@ defmodule Sportradar.MixProject do
       version: "0.1.0",
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      package: package(),
+      name: "ExSportradar",
+      source_url: "https://github.com/kodyberry23/ex_sportradar"
     ]
   end
 
@@ -23,7 +26,16 @@ defmodule Sportradar.MixProject do
       {:hackney, "~> 1.0", optional: true},
       {:jason, "~> 1.0", optional: true},
       {:ecto, "~> 3.0"},
-      {:phoenix_pubsub, "~> 2.0", optional: true}
+      {:phoenix_pubsub, "~> 2.0", optional: true},
+      {:ex_doc, "~> 0.16", only: :dev, runtime: false, optional: true}
+    ]
+  end
+
+  defp package do
+    [
+      name: "ex_sportradar",
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/kodyberry23/ex_sportradar"}
     ]
   end
 end
