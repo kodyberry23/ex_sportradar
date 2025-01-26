@@ -34,7 +34,7 @@ defmodule Sportradar.InvalidAuthError do
 
                Please configure your API key in config.exs:
 
-               config :sportradar,
+               config :ex_sportradar,
                  api_key: System.get_env("SPORTRADAR_API_KEY")
                """
 end

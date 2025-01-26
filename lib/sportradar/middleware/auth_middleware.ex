@@ -32,13 +32,13 @@ defmodule Sportradar.Middleware.AuthMiddleware do
   end
 
   defp get_api_key do
-    Application.get_env(:sportradar, :api_key) ||
+    Application.get_env(:ex_sportradar, :api_key) ||
       raise """
       Sportradar API key not configured.
 
       Please configure your API key in config.exs:
 
-      config :sportradar,
+      config :ex_sportradar,
         api_key: System.get_env("SPORTRADAR_API_KEY")
       """
   end

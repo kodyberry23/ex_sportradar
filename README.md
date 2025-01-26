@@ -78,11 +78,11 @@ Add your Sportradar API credentials to your config:
 
 ```elixir
 # config/config.exs
-config :sportradar,
+config :ex_sportradar,
   api_key: "your_api_key"
 
 # For different environments
-config :sportradar,
+config :ex_sportradar,
   api_key: System.get_env("SPORTRADAR_API_KEY")
 ```
 

@@ -176,11 +176,11 @@ defmodule Sportradar.EventManager do
   ##############################################
   # Private Functions
   ##############################################
-  def max_retries(), do: Application.get_env(:sportradar, :max_retries, 3)
-  def restart_timeout(), do: Application.get_env(:sportradar, :restart_timeout, 5_000)
+  def max_retries(), do: Application.get_env(:ex_sportradar, :max_retries, 3)
+  def restart_timeout(), do: Application.get_env(:ex_sportradar, :restart_timeout, 5_000)
 
   def health_check_interval() do
-    health_check_interval = Application.get_env(:sportradar, :health_check_interval, 15_000)
+    health_check_interval = Application.get_env(:ex_sportradar, :health_check_interval, 15_000)
 
     if health_check_interval <= 5000 do
       raise Sportradar.InvalidConfigError,
@@ -189,7 +189,7 @@ defmodule Sportradar.EventManager do
 
         Please adjust your config accordingly.
 
-        config :sportradar,
+        config :ex_sportradar,
           health_check_interval: 10_000
 
         Sportradar sends a heartbeat every 5 seconds. Setting the health check to 5 seconds
@@ -307,11 +307,11 @@ defmodule Sportradar.EventManager do
   end
 
   defp broadcast_event(event, state) do
-    IO.inspect({:sportradar_event, event})
+    IO.inspect({:ex_sportradar_event, event})
     PubSub.broadcast(
       @pubsub_module,
       state.channel,
-      {:sportradar_event, event}
+      {:ex_sportradar_event, event}
     )
   end
 

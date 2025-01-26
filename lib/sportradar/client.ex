@@ -112,7 +112,7 @@ defmodule Sportradar.Client do
 
   ####### Private Functions #######
   defp adapter_config_module() do
-    Application.get_env(:sportradar, :adapter_config_module, DefaultAdapterConfigs)
+    Application.get_env(:ex_sportradar, :adapter_config_module, DefaultAdapterConfigs)
   end
 
   defp build_headers(:default, nil),
@@ -129,11 +129,11 @@ defmodule Sportradar.Client do
     ]
 
   defp get_adapter() do
-    Application.get_env(:sportradar, :adapter, Tesla.Adapter.Hackney)
+    Application.get_env(:ex_sportradar, :adapter, Tesla.Adapter.Hackney)
   end
 
   defp get_base_url() do
-    Application.get_env(:sportradar, :base_url, "https://api.sportradar.com")
+    Application.get_env(:ex_sportradar, :base_url, "https://api.sportradar.com")
   end
 
   defp verify_adapter_streaming(Tesla.Adapter.Finch, opts) do

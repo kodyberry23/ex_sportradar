@@ -1,3 +1,3 @@
 import Config
 
-# config :sportradar, baseurl: "https://playback.sportradar.com"
+# config :ex_sportradar, baseurl: "https://playback.sportradar.com"
