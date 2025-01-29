@@ -307,7 +307,6 @@ defmodule Sportradar.EventManager do
   end
 
   defp broadcast_event(event, state) do
-    IO.inspect({:ex_sportradar_event, event})
     PubSub.broadcast(
       @pubsub_module,
       state.channel,
